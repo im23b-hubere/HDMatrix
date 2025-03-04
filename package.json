@@ -1,0 +1,15 @@
+{
+  "devDependencies": {
+    "@faker-js/faker": "^9.4.0"
+  },
+  "name": "talentbridge",
+  "version": "1.0.0",
+  "description": "Dieses Projekt ermöglicht es, Informationen über die Fähigkeiten von Mitarbeitern schnell und einfach abzurufen. Der Nutzer kann entweder auf Daten aus einer Datenbank oder aus PDF-Dokumenten zugreifen, indem er einfach mit einem Chatbot spricht.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
