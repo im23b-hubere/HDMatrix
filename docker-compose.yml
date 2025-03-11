@@ -1,0 +1,28 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: talentbridge_db
+    environment:
+      MYSQL_ROOT_PASSWORD: hello1234
+      MYSQL_DATABASE: TalentBridgeDB
+    ports:
+      - "3307:3306"  # Ändere den Host-Port auf 3307
+    volumes:
+      - db_data:/var/lib/mysql
+
+  app:
+    build:
+      context: ./API
+    container_name: talentbridge_app
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: hello1234
+      DB_NAME: TalentBridgeDB
+    depends_on:
+      - db
+
+volumes:
+  db_data:'
