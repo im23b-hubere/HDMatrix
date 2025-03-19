@@ -1,26 +1,31 @@
 from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
+import pymysql
 
 app = Flask(__name__)
 
-# Datenbankkonfiguration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:hello1234@db/TalentBridgeDB'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+def get_db_connection():
+    connection = pymysql.connect(
+        host='localhost',
+        user='root',
+        password='hello1234',
+        database='TalentBridgeDB'
+    )
+    return connection
 
-db = SQLAlchemy(app)
-
-class Employee(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50))
-
-@app.route('/')
+@app.route('/', methods=['GET'])
 def home():
-    return "Hallo, das ist meine Flask-API!"
+    return "Welcome to the TalentBridge API"
+
 
 @app.route('/employees', methods=['GET'])
 def get_employees():
-    employees = Employee.query.all()
-    return jsonify([{"id": emp.id, "name": emp.name} for emp in employees])
+    connection = get_db_connection()
+    cursor = connection.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT * FROM mitarbeiter")
+    employees = cursor.fetchall()
+    cursor.close()
+    connection.close()
+    return jsonify(employees)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
+    app.run(host='0.0.0.0', port=5000)

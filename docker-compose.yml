@@ -6,9 +6,10 @@ services:
       MYSQL_ROOT_PASSWORD: hello1234
       MYSQL_DATABASE: TalentBridgeDB
     ports:
-      - "3307:3306"  # Ändere den Host-Port auf 3307
+      - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
+      - ./Database/TalentBridge_Testdata.sql:/docker-entrypoint-initdb.d/TalentBridge_Testdata.sql
 
   app:
     build:
@@ -25,4 +26,4 @@ services:
       - db
 
 volumes:
-  db_data:'
+  db_data:
