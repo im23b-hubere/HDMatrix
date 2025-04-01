@@ -1,56 +1,56 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { Users, Briefcase, Award, TrendingUp, Clock, FileText, ChevronRight } from "lucide-react"
-import { SkillDistributionChart } from "./skill-distribution-chart"
-import { DepartmentChart } from "./department-chart"
-import { RecentActivityList } from "./recent-activity-list"
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Users, Briefcase, Award, TrendingUp, Clock, FileText, ChevronRight } from "lucide-react";
+import { SkillDistributionChart } from "@/components/skill-distribution-chart";
+import { DepartmentChart } from "@/components/department-chart";
+import { RecentActivityList } from "@/components/recent-activity-list";
 
 export function Dashboard() {
-  const [progress, setProgress] = useState(0)
-  const [activeEmployees, setActiveEmployees] = useState(0)
-  const [totalSkills, setTotalSkills] = useState(0)
-  const [documentsAnalyzed, setDocumentsAnalyzed] = useState(0)
+  const [progress, setProgress] = useState(0);
+  const [activeEmployees, setActiveEmployees] = useState(0);
+  const [totalSkills, setTotalSkills] = useState(0);
+  const [documentsAnalyzed, setDocumentsAnalyzed] = useState(0);
 
   useEffect(() => {
     // Animate stats on load
-    const timer = setTimeout(() => setProgress(78), 500)
+    const timer = setTimeout(() => setProgress(78), 500);
 
     const employeeCounter = setInterval(() => {
       setActiveEmployees((prev) => {
-        if (prev < 142) return prev + 1
-        clearInterval(employeeCounter)
-        return prev
-      })
-    }, 20)
+        if (prev < 142) return prev + 1;
+        clearInterval(employeeCounter);
+        return prev;
+      });
+    }, 20);
 
     const skillsCounter = setInterval(() => {
       setTotalSkills((prev) => {
-        if (prev < 320) return prev + 2
-        clearInterval(skillsCounter)
-        return prev
-      })
-    }, 10)
+        if (prev < 320) return prev + 2;
+        clearInterval(skillsCounter);
+        return prev;
+      });
+    }, 10);
 
     const docsCounter = setInterval(() => {
       setDocumentsAnalyzed((prev) => {
-        if (prev < 56) return prev + 1
-        clearInterval(docsCounter)
-        return prev
-      })
-    }, 30)
+        if (prev < 56) return prev + 1;
+        clearInterval(docsCounter);
+        return prev;
+      });
+    }, 30);
 
     return () => {
-      clearTimeout(timer)
-      clearInterval(employeeCounter)
-      clearInterval(skillsCounter)
-      clearInterval(docsCounter)
-    }
-  }, [])
+      clearTimeout(timer);
+      clearInterval(employeeCounter);
+      clearInterval(skillsCounter);
+      clearInterval(docsCounter);
+    };
+  }, []);
 
   const container = {
     hidden: { opacity: 0 },
@@ -60,12 +60,12 @@ export function Dashboard() {
         staggerChildren: 0.1,
       },
     },
-  }
+  };
 
   const item = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } },
-  }
+  };
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
@@ -230,6 +230,5 @@ export function Dashboard() {
         </Card>
       </motion.div>
     </motion.div>
-  )
+  );
 }
-
