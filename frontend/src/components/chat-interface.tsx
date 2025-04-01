@@ -1,68 +1,106 @@
-import React, { useState } from 'react';
-import { Button } from "@/components/ui/button";
+import { useState, useRef, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Card } from './ui/card';
+import { OllamaService } from '../services/ollama-service';
+import { DatabaseService } from '../services/db-service';
 
 interface Message {
-  id: string;
-  text: string;
-  isUser: boolean;
+    role: 'user' | 'assistant';
+    content: string;
 }
 
-export const ChatInterface: React.FC = () => {
-  const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
+export function ChatInterface() {
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim()) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: message,
-      isUser: true,
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    setMessages([...messages, newMessage]);
-    setMessage('');
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
 
-    // Simulate bot response
-    setTimeout(() => {
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: "I'm here to help you find information about our employees.",
-        isUser: false,
-      };
-      setMessages((prev) => [...prev, botMessage]);
-    }, 1000);
-  };
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!input.trim() || isLoading) return;
 
-  return (
-    <div className="flex flex-col h-[500px]">
-      <div className="flex-1 overflow-y-auto mb-4 p-4 border border-gray-200 rounded-md bg-gray-50">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`mb-2 p-2 rounded-lg max-w-[80%] ${
-              msg.isUser
-                ? 'ml-auto bg-blue-500 text-white'
-                : 'bg-white border border-gray-300'
-            }`}
-          >
-            {msg.text}
-          </div>
-        ))}
-      </div>
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type your message..."
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <Button type="submit" className="px-4 py-2">
-          Send
-        </Button>
-      </form>
-    </div>
-  );
-};
+        const userMessage = input.trim();
+        setInput('');
+        setIsLoading(true);
+
+        // Füge Benutzernachricht hinzu
+        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+
+        try {
+            // Suche zuerst in der Datenbank nach relevanten Mitarbeitern
+            const employeeResults = await DatabaseService.searchEmployees(userMessage);
+            let response: string;
+
+            if (employeeResults.employees.length > 0) {
+                // Wenn Mitarbeiter gefunden wurden, nutze diese für die Antwort
+                response = await OllamaService.queryWithEmployeeData(userMessage, employeeResults.employees);
+            } else {
+                // Wenn keine spezifischen Daten gefunden wurden, generiere eine allgemeine Antwort
+                response = await OllamaService.generateResponse(userMessage);
+            }
+
+            // Füge Assistentenantwort hinzu
+            setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+        } catch (error) {
+            console.error('Error:', error);
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: 'Entschuldigung, es gab einen Fehler bei der Verarbeitung Ihrer Anfrage.'
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-[calc(100vh-12rem)]">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 && (
+                    <div className="text-center text-muted-foreground py-8">
+                        <p>Willkommen beim TalentBridge Assistenten!</p>
+                        <p className="text-sm mt-2">
+                            Sie können Fragen zu Mitarbeitern, deren Fähigkeiten und Projekten stellen.
+                            Zum Beispiel:
+                        </p>
+                        <ul className="text-sm mt-2 space-y-1">
+                            <li>"Welche Mitarbeiter haben Erfahrung mit Python?"</li>
+                            <li>"In welcher Abteilung arbeitet Max Mustermann?"</li>
+                            <li>"Zeige mir alle Entwickler im Unternehmen."</li>
+                        </ul>
+                    </div>
+                )}
+                {messages.map((message, index) => (
+                    <Card key={index} className={`p-4 ${
+                        message.role === 'user' ? 'bg-primary/10 ml-12' : 'bg-secondary/10 mr-12'
+                    }`}>
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                    </Card>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-4 border-t">
+                <div className="flex gap-2">
+                    <Input
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Stellen Sie eine Frage zu Ihren Mitarbeitern..."
+                        disabled={isLoading}
+                    />
+                    <Button type="submit" disabled={isLoading}>
+                        {isLoading ? 'Lädt...' : 'Senden'}
+                    </Button>
+                </div>
+            </form>
+        </div>
+    );
+}

@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence, useAnimation } from "framer-motion"
 import { Search, Filter, X, ChevronDown, ChevronUp, Mail, Phone, MapPin, Briefcase, Award } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,512 +9,293 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DatabaseService } from '../services/db-service'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "../components/ui/select"
 
 interface Employee {
-  id: string
-  name: string
-  position: string
-  department: string
-  skills: string[]
-  email: string
-  phone: string
-  location: string
-  experience: number
-  avatar: string
+    id: number
+    vorname: string
+    nachname: string
+    email: string
+    position: string
+    abteilung_id: number
+    skills: string[]
 }
 
+// Kategorisierte Skills für eine bessere Übersicht
+const SKILL_CATEGORIES: Record<string, string[]> = {
+    'IT & Entwicklung': ['Python', 'JavaScript', 'Java', 'C#', 'PHP', 'React', 'Angular', 'Node.js', 'SQL', 'Docker'],
+    'Data Science & KI': ['Machine Learning', 'TensorFlow', 'Data Science', 'PyTorch', 'Pandas'],
+    'Design': ['UI/UX Design', 'Figma', 'Adobe XD', 'Grafikdesign', 'Motion Design'],
+    'Marketing': ['SEO', 'Content Marketing', 'Social Media', 'Digital Marketing', 'PR'],
+    'Management': ['Projektmanagement', 'Scrum', 'JIRA', 'Prince2', 'Agile'],
+    'Personal & HR': ['Recruiting', 'Personalentwicklung', 'Coaching', 'Arbeitsrecht'],
+    'Finanzen': ['SAP', 'Controlling', 'DATEV', 'Buchhaltung'],
+    'Sonstige': ['Qualitätsmanagement', 'Compliance', 'Prozessoptimierung', 'Supply Chain']
+};
+
+// Abteilungen mit IDs und Beschreibungen
+const DEPARTMENTS = [
+    { id: 1, name: 'IT & Entwicklung', description: 'Softwareentwicklung und IT-Infrastruktur' },
+    { id: 2, name: 'Data Science & KI', description: 'Datenanalyse und Künstliche Intelligenz' },
+    { id: 3, name: 'Design & Kreativ', description: 'UI/UX Design und Grafikdesign' },
+    { id: 4, name: 'Marketing & Kommunikation', description: 'Digitales Marketing und PR' },
+    { id: 5, name: 'Projektmanagement', description: 'Projektleitung und Methoden' },
+    { id: 6, name: 'Personal & HR', description: 'Personalwesen und Personalentwicklung' },
+    { id: 7, name: 'Finanzen & Controlling', description: 'Finanzwesen und Controlling' },
+    { id: 8, name: 'Qualität & Compliance', description: 'Qualitätsmanagement und Compliance' }
+];
+
 export function EmployeeSearch() {
-  const [query, setQuery] = useState("")
-  const [results, setResults] = useState<Employee[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
-  const [sortBy, setSortBy] = useState<"name" | "department" | "experience">("name")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const controls = useAnimation()
+    const [searchQuery, setSearchQuery] = useState('')
+    const [employees, setEmployees] = useState<Employee[]>([])
+    const [departments, setDepartments] = useState<Array<{id: number, name: string, description: string}>>([])
+    const [selectedDepartment, setSelectedDepartment] = useState<string>('all')
+    const [selectedSkills, setSelectedSkills] = useState<string[]>([])
+    const [isLoading, setIsLoading] = useState(false)
+    const controls = useAnimation()
 
-  // Mock departments for filter
-  const departments = ["Entwicklung", "Marketing", "Vertrieb", "Personal", "Finanzen", "Support"]
-
-  // Focus search input on mount
-  useEffect(() => {
-    if (searchInputRef.current) {
-      searchInputRef.current.focus()
-    }
-
-    // Trigger initial animation
-    controls.start({
-      y: 0,
-      opacity: 1,
-      transition: { type: "spring", stiffness: 300, damping: 30 },
-    })
-  }, [controls])
-
-  const searchEmployees = async () => {
-    if (!query) return
-
-    setIsLoading(true)
-
-    try {
-      // API-Aufruf zum Backend
-      const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`)
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      // Filtern nach Abteilung, falls ausgewählt
-      let filteredResults = data
-      if (selectedDepartments.length > 0) {
-        filteredResults = data.filter((emp: Employee) => selectedDepartments.includes(emp.department))
-      }
-
-      // Sortieren der Ergebnisse
-      filteredResults.sort((a: Employee, b: Employee) => {
-        let comparison = 0
-
-        switch (sortBy) {
-          case "name":
-            comparison = a.name.localeCompare(b.name)
-            break
-          case "department":
-            comparison = a.department.localeCompare(b.department)
-            break
-          case "experience":
-            comparison = a.experience - b.experience
-            break
+    // Funktion zum Ausführen der Suche
+    const performSearch = async () => {
+        setIsLoading(true)
+        try {
+            const result = await DatabaseService.searchEmployees(searchQuery, {
+                department: selectedDepartment === 'all' ? undefined : parseInt(selectedDepartment),
+                skills: selectedSkills
+            })
+            setEmployees(result.employees)
+        } catch (error) {
+            console.error('Error searching employees:', error)
+        } finally {
+            setIsLoading(false)
         }
-
-        return sortDirection === "asc" ? comparison : -comparison
-      })
-
-      setResults(filteredResults)
-    } catch (error) {
-      console.error("Fehler bei der Mitarbeitersuche:", error)
-      // Optional: Fehlermeldung anzeigen
-    } finally {
-      setIsLoading(false)
     }
-  }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      searchEmployees()
+    // Suche automatisch ausführen, wenn sich die ausgewählten Fähigkeiten ändern
+    useEffect(() => {
+        performSearch()
+    }, [selectedSkills])
+
+    useEffect(() => {
+        // Animation beim Laden
+        controls.start({ y: 0, opacity: 1 })
+        
+        // Setze die vordefinierten Abteilungen
+        setDepartments(DEPARTMENTS)
+    }, [controls])
+
+    const handleDepartmentChange = (value: string) => {
+        setSelectedDepartment(value)
+        performSearch() // Suche auch bei Abteilungsänderung ausführen
     }
-  }
 
-  const toggleSort = (field: "name" | "department" | "experience") => {
-    if (sortBy === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      setSortBy(field)
-      setSortDirection("asc")
+    const handleSearch = () => {
+        performSearch()
     }
-  }
 
-  const toggleDepartmentFilter = (department: string) => {
-    setSelectedDepartments((prev) =>
-      prev.includes(department) ? prev.filter((d) => d !== department) : [...prev, department],
-    )
-  }
+    const handleSkillClick = (skill: string) => {
+        setSelectedSkills(prev => 
+            prev.includes(skill) 
+                ? prev.filter(s => s !== skill)
+                : [...prev, skill]
+        )
+    }
 
-  const clearFilters = () => {
-    setSelectedDepartments([])
-  }
+    // Funktion zum Abrufen der Fähigkeiten basierend auf der ausgewählten Abteilung
+    const getDepartmentSkills = () => {
+        if (selectedDepartment === 'all') {
+            // Bei "Alle Abteilungen" zeigen wir alle Fähigkeiten an
+            return Object.values(SKILL_CATEGORIES).flat()
+        }
+        
+        const department = DEPARTMENTS.find(dept => dept.id.toString() === selectedDepartment)
+        if (department) {
+            // Finde die passende Kategorie basierend auf dem Abteilungsnamen
+            const matchingCategory = Object.keys(SKILL_CATEGORIES).find(category => 
+                department.name.includes(category) || category.includes(department.name)
+            )
+            if (matchingCategory) {
+                return SKILL_CATEGORIES[matchingCategory]
+            }
+        }
+        return []
+    }
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05,
-      },
-    },
-  }
+    return (
+        <div className="container mx-auto p-6 space-y-6">
+            <div className="space-y-2">
+                <h2 className="text-3xl font-bold tracking-tight">Mitarbeiter-Suche</h2>
+                <p className="text-muted-foreground">Finden Sie Mitarbeiter anhand von Namen, Abteilungen oder Fähigkeiten</p>
+            </div>
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { type: "spring", stiffness: 300, damping: 24 },
-    },
-  }
-
-  return (
-    <div className="space-y-6">
-      <motion.div initial={{ y: -20, opacity: 0 }} animate={controls} className="space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Mitarbeiter-Suche</h2>
-        <p className="text-muted-foreground">Finden Sie Mitarbeiter mit bestimmten Fähigkeiten oder Qualifikationen</p>
-      </motion.div>
-
-      <motion.div
-        initial={{ y: -10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="flex flex-col gap-4"
-      >
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Fähigkeiten, Name oder Abteilung eingeben..."
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={searchEmployees} disabled={isLoading} className="min-w-[100px]">
-              {isLoading ? (
-                <div className="flex items-center">
-                  <div className="h-4 w-4 rounded-full border-2 border-current border-r-transparent animate-spin mr-2" />
-                  <span>Suche...</span>
-                </div>
-              ) : (
-                "Suchen"
-              )}
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => setFiltersOpen(!filtersOpen)} className="relative">
-              <Filter className="h-4 w-4" />
-              {selectedDepartments.length > 0 && (
-                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center">
-                  {selectedDepartments.length}
-                </span>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        <AnimatePresence>
-          {filtersOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden"
-            >
-              <div className="border rounded-lg p-4 bg-card">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-medium">Filter</h3>
-                  {selectedDepartments.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={clearFilters}>
-                      <X className="h-3 w-3 mr-1" />
-                      Filter zurücksetzen
-                    </Button>
-                  )}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {/* Suchfeld */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">Name oder Stichwort</label>
+                    <Input
+                        placeholder="Suchen..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full"
+                    />
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Abteilungen</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {departments.map((dept) => (
-                        <Badge
-                          key={dept}
-                          variant={selectedDepartments.includes(dept) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => toggleDepartmentFilter(dept)}
-                        >
-                          {dept}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+                {/* Abteilungsauswahl */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">Abteilung</label>
+                    <Select value={selectedDepartment} onValueChange={handleDepartmentChange}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Abteilung auswählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Alle Abteilungen</SelectItem>
+                            {departments.map((dept) => (
+                                <SelectItem key={dept.id} value={dept.id.toString()}>
+                                    <div className="flex flex-col">
+                                        <span>{dept.name}</span>
+                                        <span className="text-xs text-muted-foreground">{dept.description}</span>
+                                    </div>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
 
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Sortieren nach</h4>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={sortBy === "name" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => toggleSort("name")}
-                        className="flex items-center gap-1"
-                      >
-                        Name
-                        {sortBy === "name" &&
-                          (sortDirection === "asc" ? (
-                            <ChevronUp className="h-3 w-3" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3" />
-                          ))}
-                      </Button>
-                      <Button
-                        variant={sortBy === "department" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => toggleSort("department")}
-                        className="flex items-center gap-1"
-                      >
-                        Abteilung
-                        {sortBy === "department" &&
-                          (sortDirection === "asc" ? (
-                            <ChevronUp className="h-3 w-3" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3" />
-                          ))}
-                      </Button>
-                      <Button
-                        variant={sortBy === "experience" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => toggleSort("experience")}
-                        className="flex items-center gap-1"
-                      >
-                        Erfahrung
-                        {sortBy === "experience" &&
-                          (sortDirection === "asc" ? (
-                            <ChevronUp className="h-3 w-3" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3" />
-                          ))}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Ansicht</h4>
-                    <Tabs
-                      value={viewMode}
-                      onValueChange={(v) => setViewMode(v as "grid" | "list")}
-                      className="w-[200px]"
+                {/* Suchbutton */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">&nbsp;</label>
+                    <Button 
+                        onClick={handleSearch} 
+                        className="w-full"
+                        disabled={isLoading}
                     >
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="grid">Kacheln</TabsTrigger>
-                        <TabsTrigger value="list">Liste</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  </div>
+                        {isLoading ? 'Suche...' : 'Suchen'}
+                    </Button>
                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+            </div>
 
-      <AnimatePresence mode="wait">
-        {isLoading ? (
-          <motion.div
-            key="loading"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-3"}
-          >
-            {[...Array(6)].map((_, i) =>
-              viewMode === "grid" ? (
-                <Card key={i} className="overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className="p-6 space-y-4">
-                      <div className="flex items-center gap-4">
-                        <Skeleton className="h-16 w-16 rounded-full" />
-                        <div className="space-y-2">
-                          <Skeleton className="h-4 w-[150px]" />
-                          <Skeleton className="h-4 w-[100px]" />
-                        </div>
-                      </div>
-                      <Skeleton className="h-4 w-full" />
-                      <div className="flex flex-wrap gap-2">
-                        <Skeleton className="h-6 w-[80px]" />
-                        <Skeleton className="h-6 w-[100px]" />
-                        <Skeleton className="h-6 w-[90px]" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card key={i}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <Skeleton className="h-12 w-12 rounded-full" />
-                      <div className="space-y-2 flex-1">
-                        <Skeleton className="h-4 w-[200px]" />
-                        <Skeleton className="h-4 w-[150px]" />
-                      </div>
-                      <Skeleton className="h-8 w-[100px]" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ),
-            )}
-          </motion.div>
-        ) : (
-          <motion.div
-            key="results"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            exit={{ opacity: 0 }}
-            className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-3"}
-          >
-            {results.length > 0 ? (
-              results.map((employee) =>
-                viewMode === "grid" ? (
-                  <motion.div
-                    key={employee.id}
-                    variants={itemVariants}
-                    whileHover={{ y: -5, transition: { duration: 0.2 } }}
-                    className="h-full"
-                  >
-                    <Card className="overflow-hidden h-full">
-                      <CardContent className="p-0 h-full">
-                        <div className="p-6 flex flex-col h-full">
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-4">
-                              <div className="relative">
-                                <div className="absolute inset-0 bg-primary/10 rounded-full animate-pulse" />
-                                <Avatar className="h-16 w-16 border-2 border-primary/20">
-                                  <AvatarImage src={employee.avatar} alt={employee.name} />
-                                  <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-lg">{employee.name}</h3>
-                                <p className="text-muted-foreground">{employee.position}</p>
-                              </div>
-                            </div>
-                            <Badge variant="outline">{employee.department}</Badge>
-                          </div>
-
-                          <div className="space-y-3 flex-1">
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Mail className="h-4 w-4 mr-2" />
-                              <span className="truncate">{employee.email}</span>
-                            </div>
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Phone className="h-4 w-4 mr-2" />
-                              <span>{employee.phone}</span>
-                            </div>
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <MapPin className="h-4 w-4 mr-2" />
-                              <span>{employee.location}</span>
-                            </div>
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Briefcase className="h-4 w-4 mr-2" />
-                              <span>{employee.experience} Jahre Erfahrung</span>
-                            </div>
-                          </div>
-
-                          <div className="mt-4">
-                            <p className="text-sm font-medium mb-2 flex items-center">
-                              <Award className="h-4 w-4 mr-1" />
-                              Fähigkeiten
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {employee.skills.map((skill, i) => (
-                                <Badge
-                                  key={i}
-                                  variant="secondary"
-                                  className="animate-in fade-in"
-                                  style={{ animationDelay: `${i * 100}ms` }}
-                                >
-                                  {skill}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="mt-4 pt-4 border-t">
-                            <Button variant="outline" size="sm" className="w-full">
-                              Profil anzeigen
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key={employee.id}
-                    variants={itemVariants}
-                    whileHover={{ x: 5, transition: { duration: 0.2 } }}
-                  >
-                    <Card className="overflow-hidden">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-12 w-12 border-2 border-primary/20">
-                            <AvatarImage src={employee.avatar} alt={employee.name} />
-                            <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="font-semibold">{employee.name}</h3>
-                                <p className="text-sm text-muted-foreground">{employee.position}</p>
-                              </div>
-                              <Badge variant="outline">{employee.department}</Badge>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {employee.skills.slice(0, 3).map((skill, i) => (
-                                <Badge
-                                  key={i}
-                                  variant="secondary"
-                                  className="animate-in fade-in"
-                                  style={{ animationDelay: `${i * 100}ms` }}
-                                >
-                                  {skill}
-                                </Badge>
-                              ))}
-                              {employee.skills.length > 3 && (
-                                <Badge variant="outline">+{employee.skills.length - 3}</Badge>
-                              )}
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="sm">
-                            Details
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ),
-              )
-            ) : query && !isLoading ? (
-              <motion.div variants={itemVariants} className="col-span-full text-center py-10">
-                <div className="inline-flex items-center justify-center rounded-full bg-muted p-8 mb-4">
-                  <Search className="h-10 w-10 text-muted-foreground" />
+            {/* Fähigkeiten-Filter */}
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Fähigkeiten filtern</h3>
+                    {selectedSkills.length > 0 && (
+                        <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setSelectedSkills([])}
+                            className="text-muted-foreground hover:text-foreground"
+                        >
+                            Alle Filter zurücksetzen
+                        </Button>
+                    )}
                 </div>
-                <h3 className="text-lg font-semibold mb-1">Keine Ergebnisse gefunden</h3>
-                <p className="text-muted-foreground">Versuchen Sie andere Suchbegriffe oder Filter</p>
-              </motion.div>
-            ) : null}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
+
+                {/* Ausgewählte Fähigkeiten */}
+                {selectedSkills.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="text-sm font-medium text-muted-foreground">
+                            Ausgewählte Fähigkeiten:
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {selectedSkills.map((skill) => (
+                                <Badge
+                                    key={skill}
+                                    variant="default"
+                                    className="cursor-pointer"
+                                    onClick={() => handleSkillClick(skill)}
+                                >
+                                    {skill}
+                                    <X className="ml-1 h-3 w-3" />
+                                </Badge>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Verfügbare Fähigkeiten */}
+                <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">
+                        {selectedDepartment === 'all' 
+                            ? 'Verfügbare Fähigkeiten:'
+                            : `Verfügbare Fähigkeiten in ${DEPARTMENTS.find(d => d.id.toString() === selectedDepartment)?.name}:`
+                        }
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {getDepartmentSkills().map((skill) => (
+                            <Badge
+                                key={skill}
+                                variant={selectedSkills.includes(skill) ? "default" : "outline"}
+                                className="cursor-pointer"
+                                onClick={() => handleSkillClick(skill)}
+                            >
+                                {skill}
+                            </Badge>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Ergebnisliste */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold">
+                    Gefundene Mitarbeiter ({employees.length})
+                </h3>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {employees.map((employee) => (
+                        <Card key={employee.id} className="p-4">
+                            <div className="space-y-2">
+                                <div className="font-medium">
+                                    {employee.vorname} {employee.nachname}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                    {employee.email}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                    {employee.skills.map((skill) => (
+                                        <Badge key={skill} variant="secondary" className="text-xs">
+                                            {skill}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        </div>
+    )
 }
 
 // Add missing Avatar component
 function Avatar({
-  className,
-  children,
-  ...props
+    className,
+    children,
+    ...props
 }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) {
-  return (
-    <div className={`relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full ${className}`} {...props}>
-      {children}
-    </div>
-  )
+    return (
+        <div className={`relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full ${className}`} {...props}>
+            {children}
+        </div>
+    )
 }
 
 function AvatarImage({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
-  return (
-    <img src={src || "/placeholder.svg"} alt={alt} className="aspect-square h-full w-full object-cover" {...props} />
-  )
+    return (
+        <img src={src || "/placeholder.svg"} alt={alt} className="aspect-square h-full w-full object-cover" {...props} />
+    )
 }
 
 function AvatarFallback({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className="flex h-full w-full items-center justify-center rounded-full bg-muted" {...props}>
-      {children}
-    </div>
-  )
+    return (
+        <div className="flex h-full w-full items-center justify-center rounded-full bg-muted" {...props}>
+            {children}
+        </div>
+    )
 }
 

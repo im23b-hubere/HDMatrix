@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ollama Model Installation</title>
+</head>
+<body>
+    <h1>Mistral Model Installation</h1>
+    <button onclick="installModel()">Install Mistral Model</button>
+    <div id="status"></div>
+
+    <script>
+        async function installModel() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'Starting installation...';
+            
+            try {
+                const response = await fetch('http://localhost:11434/api/pull', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: 'mistral'
+                    })
+                });
+
+                if (response.ok) {
+                    statusDiv.textContent = 'Installation started successfully! This may take several minutes...';
+                } else {
+                    statusDiv.textContent = 'Error starting installation: ' + await response.text();
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html> 
