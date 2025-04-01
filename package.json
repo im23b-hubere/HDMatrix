@@ -1,19 +1,56 @@
 {
   "devDependencies": {
-    "@faker-js/faker": "^9.4.0"
+    "@faker-js/faker": "^8.4.0",
+    "@tailwindcss/postcss": "^4.0.16",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1"
   },
   "name": "talentbridge",
   "version": "1.0.0",
   "description": "Dieses Projekt ermöglicht es, Informationen über die Fähigkeiten von Mitarbeitern schnell und einfach abzurufen. Der Nutzer kann entweder auf Daten aus einer Datenbank oder aus PDF-Dokumenten zugreifen, indem er einfach mit einem Chatbot spricht.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "craco start",
+    "build": "craco build",
+    "test": "craco test",
+    "eject": "react-scripts eject"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@craco/craco": "^7.1.0",
+    "@headlessui/react": "^1.7.18",
+    "@radix-ui/react-scroll-area": "^1.0.5",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-tooltip": "^1.0.7",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "framer-motion": "^11.0.3",
+    "lucide-react": "^0.330.0",
+    "next-themes": "^0.2.1",
+    "path": "^0.12.7",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1",
+    "tailwind-merge": "^2.2.0",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^4.9.5"
+  },
+  "proxy": "http://localhost:5000",
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }
