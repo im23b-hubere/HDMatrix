@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence, useAnimation } from "framer-motion"
-import { Search, Filter, X, ChevronDown, ChevronUp, Mail, Phone, MapPin, Briefcase, Award } from "lucide-react"
+import { Search, Filter, X, ChevronDown, ChevronUp, Mail, Phone, MapPin, Briefcase, Award, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -128,22 +128,27 @@ export function EmployeeSearch() {
     }
 
     return (
-        <div className="container mx-auto p-6 space-y-6">
+        <div className="container mx-auto p-4 md:p-6 space-y-6">
             <div className="space-y-2">
-                <h2 className="text-3xl font-bold tracking-tight">Mitarbeiter-Suche</h2>
-                <p className="text-muted-foreground">Finden Sie Mitarbeiter anhand von Namen, Abteilungen oder Fähigkeiten</p>
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Mitarbeiter-Suche</h2>
+                <p className="text-sm md:text-base text-muted-foreground">
+                    Finden Sie Mitarbeiter anhand von Namen, Abteilungen oder Fähigkeiten
+                </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {/* Suchfeld */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Name oder Stichwort</label>
-                    <Input
-                        placeholder="Suchen..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full"
-                    />
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            placeholder="Suchen..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9"
+                        />
+                    </div>
                 </div>
 
                 {/* Abteilungsauswahl */}
@@ -175,7 +180,17 @@ export function EmployeeSearch() {
                         className="w-full"
                         disabled={isLoading}
                     >
-                        {isLoading ? 'Suche...' : 'Suchen'}
+                        {isLoading ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Suche...
+                            </>
+                        ) : (
+                            <>
+                                <Search className="mr-2 h-4 w-4" />
+                                Suchen
+                            </>
+                        )}
                     </Button>
                 </div>
             </div>
@@ -246,27 +261,83 @@ export function EmployeeSearch() {
                 <h3 className="text-lg font-semibold">
                     Gefundene Mitarbeiter ({employees.length})
                 </h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {employees.map((employee) => (
-                        <Card key={employee.id} className="p-4">
-                            <div className="space-y-2">
-                                <div className="font-medium">
-                                    {employee.vorname} {employee.nachname}
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                    {employee.email}
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {employee.skills.map((skill) => (
-                                        <Badge key={skill} variant="secondary" className="text-xs">
-                                            {skill}
-                                        </Badge>
-                                    ))}
-                                </div>
+                
+                <AnimatePresence mode="wait">
+                    {isLoading ? (
+                        <motion.div
+                            key="loading"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+                        >
+                            {[...Array(6)].map((_, i) => (
+                                <Card key={i} className="p-4 animate-pulse">
+                                    <div className="space-y-2">
+                                        <div className="h-4 bg-muted rounded w-3/4" />
+                                        <div className="h-3 bg-muted rounded w-1/2" />
+                                        <div className="flex flex-wrap gap-1">
+                                            {[...Array(3)].map((_, j) => (
+                                                <div key={j} className="h-5 bg-muted rounded w-16" />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </Card>
+                            ))}
+                        </motion.div>
+                    ) : employees.length > 0 ? (
+                        <motion.div
+                            key="results"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+                        >
+                            {employees.map((employee) => (
+                                <motion.div
+                                    key={employee.id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    <Card className="p-4 hover:shadow-md transition-shadow">
+                                        <div className="space-y-2">
+                                            <div className="font-medium">
+                                                {employee.vorname} {employee.nachname}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">
+                                                {employee.email}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {employee.skills.map((skill) => (
+                                                    <Badge key={skill} variant="secondary" className="text-xs">
+                                                        {skill}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </motion.div>
+                            ))}
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="no-results"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="text-center py-10"
+                        >
+                            <div className="inline-flex items-center justify-center rounded-full bg-muted p-8 mb-4">
+                                <Search className="h-10 w-10 text-muted-foreground" />
                             </div>
-                        </Card>
-                    ))}
-                </div>
+                            <h3 className="text-lg font-semibold mb-1">Keine Ergebnisse gefunden</h3>
+                            <p className="text-muted-foreground">
+                                Versuchen Sie andere Suchbegriffe oder Filter
+                            </p>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     )

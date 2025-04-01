@@ -17,34 +17,51 @@ interface SearchFilters {
     skills?: string[];
 }
 
-const API_BASE_URL = 'http://localhost:5000/api'; // Basis-URL für unsere API
+interface Department {
+    id: number;
+    name: string;
+}
 
 export class DatabaseService {
+    private static readonly API_BASE_URL = 'http://localhost:5000/api';
+
     static async searchEmployees(query: string, filters?: SearchFilters): Promise<SearchResult> {
         try {
+            console.log('Sende Suchanfrage:', { query, filters });
             const queryParams = new URLSearchParams();
             if (query) queryParams.append('query', query);
             if (filters?.department) queryParams.append('department', filters.department.toString());
             if (filters?.skills?.length) queryParams.append('skills', filters.skills.join(','));
 
-            const response = await fetch(`${API_BASE_URL}/employees/search?${queryParams}`);
+            const url = `${this.API_BASE_URL}/employees/search?${queryParams}`;
+            console.log('Request URL:', url);
+
+            const response = await fetch(url);
+            console.log('API Response Status:', response.status);
+            
             if (!response.ok) {
-                throw new Error('Fehler bei der Mitarbeitersuche');
+                throw new Error(`Fehler bei der Mitarbeitersuche: ${response.status}`);
             }
-            return await response.json();
+            
+            const data = await response.json();
+            console.log('API Response Data:', data);
+            return data;
         } catch (error) {
             console.error('Fehler bei der Mitarbeitersuche:', error);
             return { employees: [] };
         }
     }
 
-    static async getDepartments(): Promise<Array<{id: number, name: string}>> {
+    static async getDepartments(): Promise<Department[]> {
         try {
-            const response = await fetch(`${API_BASE_URL}/departments`);
+            console.log('Lade Abteilungen...');
+            const response = await fetch(`${this.API_BASE_URL}/departments`);
             if (!response.ok) {
                 throw new Error('Fehler beim Laden der Abteilungen');
             }
-            return await response.json();
+            const data = await response.json();
+            console.log('Geladene Abteilungen:', data);
+            return data;
         } catch (error) {
             console.error('Fehler beim Laden der Abteilungen:', error);
             return [];
@@ -53,11 +70,14 @@ export class DatabaseService {
 
     static async getAllSkills(): Promise<string[]> {
         try {
-            const response = await fetch(`${API_BASE_URL}/skills`);
+            console.log('Lade Skills...');
+            const response = await fetch(`${this.API_BASE_URL}/skills`);
             if (!response.ok) {
                 throw new Error('Fehler beim Laden der Skills');
             }
-            return await response.json();
+            const data = await response.json();
+            console.log('Geladene Skills:', data);
+            return data;
         } catch (error) {
             console.error('Fehler beim Laden der Skills:', error);
             return [];
@@ -66,7 +86,7 @@ export class DatabaseService {
 
     static async getEmployeeDetails(id: number): Promise<Employee | null> {
         try {
-            const response = await fetch(`${API_BASE_URL}/employees/${id}`);
+            const response = await fetch(`${this.API_BASE_URL}/employees/${id}`);
             if (!response.ok) {
                 throw new Error('Fehler beim Laden der Mitarbeiterdaten');
             }
@@ -79,7 +99,7 @@ export class DatabaseService {
 
     static async getEmployeeSkills(employeeId: number): Promise<string[]> {
         try {
-            const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/skills`);
+            const response = await fetch(`${this.API_BASE_URL}/employees/${employeeId}/skills`);
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);

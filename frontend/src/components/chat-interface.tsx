@@ -1,23 +1,36 @@
-import { useState, useRef, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Card } from './ui/card';
-import { OllamaService } from '../services/ollama-service';
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Send, Loader2, Search, User, Bot } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { DatabaseService } from '../services/db-service';
+import { OllamaService } from '../services/ollama-service';
 
 interface Message {
     role: 'user' | 'assistant';
     content: string;
+    timestamp: Date;
 }
 
 export function ChatInterface() {
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<Message[]>([{
+        role: 'assistant',
+        content: `Willkommen bei TalentBridge! Ich bin Ihr KI-Assistent für die Mitarbeitersuche. Sie können mich zum Beispiel fragen:
+
+• "Wer hat Erfahrung mit Python?"
+• "Zeige mir alle Mitarbeiter aus der IT-Abteilung"
+• "Wer kann mir bei React helfen?"
+• "Suche nach Mitarbeitern mit Scrum-Erfahrung"`,
+        timestamp: new Date()
+    }]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
     useEffect(() => {
@@ -29,32 +42,63 @@ export function ChatInterface() {
         if (!input.trim() || isLoading) return;
 
         const userMessage = input.trim();
+        console.log('Verarbeite Benutzereingabe:', userMessage);
         setInput('');
         setIsLoading(true);
 
-        // Füge Benutzernachricht hinzu
-        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+        // Füge die Benutzernachricht hinzu
+        setMessages(prev => [...prev, {
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date()
+        }]);
 
         try {
-            // Suche zuerst in der Datenbank nach relevanten Mitarbeitern
-            const employeeResults = await DatabaseService.searchEmployees(userMessage);
-            let response: string;
-
-            if (employeeResults.employees.length > 0) {
-                // Wenn Mitarbeiter gefunden wurden, nutze diese für die Antwort
-                response = await OllamaService.queryWithEmployeeData(userMessage, employeeResults.employees);
-            } else {
-                // Wenn keine spezifischen Daten gefunden wurden, generiere eine allgemeine Antwort
-                response = await OllamaService.generateResponse(userMessage);
+            // Extrahiere den Suchbegriff aus der Frage
+            let searchQuery = userMessage;
+            if (userMessage.toLowerCase().includes('python')) {
+                searchQuery = 'Python';
+            } else if (userMessage.toLowerCase().includes('react')) {
+                searchQuery = 'React';
+            } else if (userMessage.toLowerCase().includes('scrum')) {
+                searchQuery = 'Scrum';
+            } else if (userMessage.toLowerCase().includes('it-abteilung')) {
+                searchQuery = 'IT';
             }
+            
+            console.log('Extrahierter Suchbegriff:', searchQuery);
+            
+            // Suche nach relevanten Mitarbeitern
+            console.log('Sende Suchanfrage an DatabaseService:', searchQuery);
+            const searchResult = await DatabaseService.searchEmployees(searchQuery);
+            console.log('Suchergebnis von DatabaseService:', searchResult);
+            
+            if (!searchResult.employees || searchResult.employees.length === 0) {
+                console.log('Keine Mitarbeiter gefunden');
+            } else {
+                console.log(`${searchResult.employees.length} Mitarbeiter gefunden`);
+            }
+            
+            // Generiere eine Antwort basierend auf den gefundenen Mitarbeitern
+            console.log('Sende Anfrage an OllamaService');
+            const response = await OllamaService.queryWithEmployeeData(
+                userMessage,
+                searchResult.employees
+            );
+            console.log('Antwort von OllamaService:', response);
 
-            // Füge Assistentenantwort hinzu
-            setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-        } catch (error) {
-            console.error('Error:', error);
+            // Füge die Assistentenantwort hinzu
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: 'Entschuldigung, es gab einen Fehler bei der Verarbeitung Ihrer Anfrage.'
+                content: response,
+                timestamp: new Date()
+            }]);
+        } catch (error) {
+            console.error('Fehler bei der Verarbeitung:', error);
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: 'Entschuldigung, es gab ein technisches Problem bei der Verarbeitung Ihrer Anfrage. Bitte versuchen Sie es erneut.',
+                timestamp: new Date()
             }]);
         } finally {
             setIsLoading(false);
@@ -62,44 +106,51 @@ export function ChatInterface() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-12rem)]">
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.length === 0 && (
-                    <div className="text-center text-muted-foreground py-8">
-                        <p>Willkommen beim TalentBridge Assistenten!</p>
-                        <p className="text-sm mt-2">
-                            Sie können Fragen zu Mitarbeitern, deren Fähigkeiten und Projekten stellen.
-                            Zum Beispiel:
-                        </p>
-                        <ul className="text-sm mt-2 space-y-1">
-                            <li>"Welche Mitarbeiter haben Erfahrung mit Python?"</li>
-                            <li>"In welcher Abteilung arbeitet Max Mustermann?"</li>
-                            <li>"Zeige mir alle Entwickler im Unternehmen."</li>
-                        </ul>
-                    </div>
-                )}
-                {messages.map((message, index) => (
-                    <Card key={index} className={`p-4 ${
-                        message.role === 'user' ? 'bg-primary/10 ml-12' : 'bg-secondary/10 mr-12'
-                    }`}>
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-                    </Card>
-                ))}
+        <div className="flex flex-col h-[calc(100vh-4rem)] max-w-3xl mx-auto p-4">
+            <Card className="flex-grow overflow-y-auto mb-4 p-4">
+                <AnimatePresence initial={false}>
+                    {messages.map((message, index) => (
+                        <motion.div
+                            key={index}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            className={`flex items-start space-x-2 mb-4 ${
+                                message.role === 'assistant' ? 'bg-muted/50 rounded-lg p-3' : ''
+                            }`}
+                        >
+                            {message.role === 'assistant' ? (
+                                <Bot className="w-6 h-6 mt-1 text-blue-500" />
+                            ) : (
+                                <User className="w-6 h-6 mt-1 text-gray-500" />
+                            )}
+                            <div className="flex-grow">
+                                <div className="whitespace-pre-wrap">{message.content}</div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                    {message.timestamp.toLocaleTimeString()}
+                                </div>
+                            </div>
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
                 <div ref={messagesEndRef} />
-            </div>
+            </Card>
 
-            <form onSubmit={handleSubmit} className="p-4 border-t">
-                <div className="flex gap-2">
-                    <Input
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="Stellen Sie eine Frage zu Ihren Mitarbeitern..."
-                        disabled={isLoading}
-                    />
-                    <Button type="submit" disabled={isLoading}>
-                        {isLoading ? 'Lädt...' : 'Senden'}
-                    </Button>
-                </div>
+            <form onSubmit={handleSubmit} className="flex space-x-2">
+                <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Stellen Sie eine Frage..."
+                    disabled={isLoading}
+                    className="flex-grow"
+                />
+                <Button type="submit" disabled={isLoading}>
+                    {isLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <Send className="w-4 h-4" />
+                    )}
+                </Button>
             </form>
         </div>
     );
