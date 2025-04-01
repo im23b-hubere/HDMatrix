@@ -71,11 +71,11 @@ export function EmployeeSearch() {
       // Filtern nach Abteilung, falls ausgewählt
       let filteredResults = data
       if (selectedDepartments.length > 0) {
-        filteredResults = data.filter((emp) => selectedDepartments.includes(emp.department))
+        filteredResults = data.filter((emp: Employee) => selectedDepartments.includes(emp.department))
       }
 
       // Sortieren der Ergebnisse
-      filteredResults.sort((a, b) => {
+      filteredResults.sort((a: Employee, b: Employee) => {
         let comparison = 0
 
         switch (sortBy) {

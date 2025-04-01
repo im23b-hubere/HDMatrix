@@ -1,7 +1,6 @@
 export {}; // Make this file a module
 
-import { generateText, streamText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import OpenAI from "openai"
 import { searchEmployees, getEmployeesBySkills } from "./db"
 import { queryDocuments } from "./pdf-processor"
 
@@ -21,9 +20,9 @@ Antworte immer auf Deutsch und in einem professionellen, hilfsbereiten Ton.
 
 // Typen für die KI-Anfragen
 interface EmployeeQueryParams {
-  query?: string
-  skills?: string[]
-  department?: string
+  skills?: string[];
+  query?: string;
+  documentId?: string;
 }
 
 interface DocumentQueryParams {
@@ -31,121 +30,106 @@ interface DocumentQueryParams {
   documentId?: string
 }
 
+interface Employee {
+  id: string;
+  name: string;
+  department: string;
+  skills: string[];
+}
+
+interface TextChunk {
+  type: string;
+  text: string;
+}
+
+interface StreamResponse {
+  type: string;
+  text?: string;
+  textDelta?: string;
+}
+
+interface Message {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
 // Mitarbeiterinformationen abfragen
 export async function queryEmployeeInfo(userQuery: string, params: EmployeeQueryParams = {}): Promise<string> {
   try {
-    // Mitarbeiterdaten abrufen
-    let employees = []
+    let employees: Employee[] = []
     if (params.skills && params.skills.length > 0) {
       employees = await getEmployeesBySkills(params.skills)
     } else if (params.query) {
       employees = await searchEmployees(params.query)
     }
 
-    // Kontext für die KI erstellen
-    const context =
-      employees.length > 0
-        ? `Hier sind die gefundenen Mitarbeiter: ${JSON.stringify(employees, null, 2)}`
-        : "Es wurden keine passenden Mitarbeiter gefunden."
+    const context = employees.length > 0
+      ? `Hier sind die gefundenen Mitarbeiter: ${JSON.stringify(employees, null, 2)}`
+      : "Es wurden keine passenden Mitarbeiter gefunden."
 
-    // KI-Antwort generieren
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      system: SYSTEM_PROMPT,
-      prompt: `
-        Benutzeranfrage: ${userQuery}
-        
-        Verfügbare Daten:
-        ${context}
-        
-        Bitte antworte auf die Anfrage basierend auf den verfügbaren Daten. 
-        Wenn keine passenden Daten gefunden wurden, schlage alternative Suchbegriffe vor.
-      `,
-    })
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "Du bist ein hilfreicher Assistent." },
+        { role: "user", content: `${context}\n\nBitte beantworte folgende Frage: ${userQuery}` }
+      ],
+    });
 
-    return text
+    return completion.choices[0]?.message?.content || "Keine Antwort verfügbar."
   } catch (error) {
-    console.error("Fehler bei der KI-Abfrage zu Mitarbeitern:", error)
-    return "Es ist ein Fehler bei der Verarbeitung Ihrer Anfrage aufgetreten. Bitte versuchen Sie es später erneut."
+    console.error("Fehler bei der KI-Anfrage:", error)
+    throw error
   }
 }
 
-// PDF-Dokumente abfragen
-export async function queryDocumentInfo(userQuery: string, params: DocumentQueryParams): Promise<string> {
+// Dokumenteninformationen abfragen
+export async function queryDocumentInfo(userQuery: string, documentId?: string): Promise<string> {
   try {
-    // Relevante Dokumente finden
-    const documentChunks = await queryDocuments(
-      params.query,
-      params.documentId ? { documentId: params.documentId } : undefined,
-    )
+    const context = documentId
+      ? await queryDocuments(documentId)
+      : "Kein Dokument ausgewählt."
 
-    // Kontext für die KI erstellen
-    const context =
-      documentChunks.length > 0
-        ? documentChunks
-            .map(
-              (doc) => `
-        Inhalt: ${doc.pageContent}
-        Quelle: ${doc.metadata.fileName}, Seite ${doc.metadata.pageNumber}
-      `,
-            )
-            .join("\n\n")
-        : "Es wurden keine relevanten Dokumente gefunden."
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "Du bist ein hilfreicher Assistent." },
+        { role: "user", content: `Verfügbare Dokumentinformationen: ${context}\n\nBitte beantworte die folgende Frage: ${userQuery}` }
+      ],
+    });
 
-    // KI-Antwort generieren
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      system: SYSTEM_PROMPT,
-      prompt: `
-        Benutzeranfrage: ${userQuery}
-        
-        Verfügbare Dokumentinformationen:
-        ${context}
-        
-        Bitte beantworte die Anfrage basierend auf den verfügbaren Dokumenten.
-        Wenn keine relevanten Informationen gefunden wurden, teile dies dem Benutzer mit.
-      `,
-    })
-
-    return text
+    return completion.choices[0]?.message?.content || "Keine Antwort verfügbar."
   } catch (error) {
     console.error("Fehler bei der KI-Abfrage zu Dokumenten:", error)
-    return "Es ist ein Fehler bei der Verarbeitung Ihrer Anfrage aufgetreten. Bitte versuchen Sie es später erneut."
+    throw error
   }
 }
 
-// Allgemeine Chat-Anfrage mit Streaming-Antwort
-export async function streamChatResponse(
-  messages: { role: "user" | "assistant" | "system"; content: string }[],
-  onChunk: (chunk: string) => void,
-): Promise<string> {
+// Chat-Stream generieren
+export async function streamChatResponse(messages: Message[], onChunk: (chunk: string) => void): Promise<string> {
+  let fullText = ""
+
   try {
-    // System-Prompt hinzufügen, falls nicht vorhanden
-    if (!messages.some((msg) => msg.role === "system")) {
-      messages.unshift({ role: "system", content: SYSTEM_PROMPT })
+    const stream = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || "";
+      if (content) {
+        onChunk(content);
+        fullText += content;
+      }
     }
 
-    let fullText = ""
-
-    // Streaming-Antwort generieren
-    const result = streamText({
-      model: openai("gpt-4o"),
-      messages,
-      onChunk: ({ chunk }) => {
-        if (chunk.type === "text-delta") {
-          onChunk(chunk.text)
-          fullText += chunk.text
-        }
-      },
-    })
-
-    await result.text
     return fullText
   } catch (error) {
-    console.error("Fehler beim Streaming der Chat-Antwort:", error)
-    const errorMessage =
-      "Es ist ein Fehler bei der Verarbeitung Ihrer Anfrage aufgetreten. Bitte versuchen Sie es später erneut."
-    onChunk(errorMessage)
-    return errorMessage
+    console.error("Fehler beim Generieren des Chat-Streams:", error)
+    throw error
   }
 }

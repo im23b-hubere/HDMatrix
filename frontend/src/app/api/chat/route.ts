@@ -3,6 +3,11 @@ import { streamChatResponse } from "@/lib/ai-service"
 import { extractTextFromPdf } from "@/lib/pdf-processor"
 import { saveDocument } from "@/lib/db"
 
+interface Message {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 // Chat-API-Route mit Streaming-Unterstützung
 export async function POST(req: NextRequest) {
   try {
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest) {
     const writer = stream.writable.getWriter()
 
     // Antwort streamen
-    streamChatResponse(messages, (chunk) => {
+    streamChatResponse(messages as Message[], (chunk: string) => {
       writer.write(encoder.encode(chunk))
     }).finally(() => {
       writer.close()
@@ -81,11 +86,13 @@ export async function POST(req: NextRequest) {
 
     return new Response(stream.readable, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
       },
     })
   } catch (error) {
-    console.error("Fehler in der Chat-API:", error)
+    console.error("Fehler beim Chat:", error)
     return NextResponse.json({ error: "Interner Serverfehler" }, { status: 500 })
   }
 }

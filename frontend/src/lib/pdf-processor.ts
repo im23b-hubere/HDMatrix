@@ -1,14 +1,19 @@
 export {}; // Make this file a module
 
-import { PDFLoader } from "langchain/document_loaders/fs/pdf"
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf"
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter"
-import { OpenAIEmbeddings } from "langchain/embeddings/openai"
-import { SupabaseVectorStore } from "langchain/vectorstores/supabase"
+import { OpenAIEmbeddings } from "@langchain/openai"
+import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase"
 import { createClient } from "@supabase/supabase-js"
-import { Document } from "langchain/document"
+import { Document } from "@langchain/core/documents"
 import fs from "fs"
 import path from "path"
 import os from "os"
+
+interface DocumentChunk {
+  pageContent: string;
+  metadata?: Record<string, any>;
+}
 
 // Supabase-Client für Vektorspeicher
 const supabaseClient = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_API_KEY || "")
@@ -49,7 +54,7 @@ export async function processPdf(
     const chunks = await textSplitter.splitDocuments(docs)
 
     // Metadaten zu jedem Chunk hinzufügen
-    const enhancedChunks = chunks.map((chunk) => {
+    const enhancedChunks = chunks.map((chunk: DocumentChunk) => {
       return new Document({
         pageContent: chunk.pageContent,
         metadata: {
@@ -112,7 +117,7 @@ export async function extractTextFromPdf(fileBuffer: Buffer): Promise<string> {
     fs.unlinkSync(tempFilePath)
 
     // Alle Texte zusammenführen
-    return docs.map((doc) => doc.pageContent).join("\n\n")
+    return docs.map((doc: Document) => doc.pageContent).join("\n\n")
   } catch (error) {
     console.error("Fehler beim Extrahieren von Text aus PDF:", error)
     throw error
