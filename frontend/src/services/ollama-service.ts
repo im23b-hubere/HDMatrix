@@ -69,39 +69,61 @@ export class OllamaService {
     static async queryWithEmployeeData(query: string, employees: Employee[]): Promise<string> {
         console.log('Verarbeite Mitarbeiterdaten für Ollama:', employees);
         const context = this.createContextFromEmployees(employees);
+        const totalEmployees = employees.length;
+        const departmentCounts = this.getDepartmentCounts(employees);
+        
         console.log('Generierter Kontext:', context);
         
-        const prompt = `Du bist ein hilfreicher HR-Assistent für TalentBridge. 
-        Deine Aufgabe ist es, präzise Informationen über Mitarbeiter und ihre Fähigkeiten zu geben.
-        
-        Kontext über verfügbare Mitarbeiter:
-        ${context}
-        
-        Benutzerfrage: "${query}"
-        
-        Wichtige Anweisungen:
-        1. Wenn Mitarbeiter mit den gesuchten Fähigkeiten gefunden wurden:
-           - Liste jeden gefundenen Mitarbeiter einzeln auf
-           - Nenne bei jedem Mitarbeiter die relevanten Fähigkeiten
-           - Erwähne ihre Abteilung und Position
-        2. Wenn keine passenden Mitarbeiter gefunden wurden:
-           - Sage klar "Es wurden keine Mitarbeiter mit [gesuchte Fähigkeit] gefunden"
-           - Füge KEINE weiteren Erklärungen oder Vorschläge hinzu
-        3. Beziehe dich AUSSCHLIESSLICH auf die Informationen aus dem gegebenen Kontext
-        4. Erfinde KEINE Informationen oder Mitarbeiter
-        5. Formatiere die Antwort übersichtlich mit Aufzählungspunkten
-        6. Antworte immer auf Deutsch und in einem professionellen Ton
-        7. Gib KEINE Empfehlungen oder Vorschläge, wenn keine Mitarbeiter gefunden wurden
-        
-        Format der Antwort bei gefundenen Mitarbeitern:
-        Ich habe [Anzahl] Mitarbeiter mit [gesuchte Fähigkeit] gefunden:
+        const prompt = `Du bist ein freundlicher und kompetenter HR-Assistent. Antworte natürlich und hilfreich auf alle Fragen.
+        Verstehe auch informelle oder unvollständige Fragen und liefere relevante Informationen.
 
-        • [Vorname] [Nachname] ([Abteilung])
-          - Position: [Position]
-          - Relevante Fähigkeiten: [spezifische Fähigkeiten]
-          - Kontakt: [Email]
+        Verfügbare Daten:
+        - Mitarbeiteranzahl: ${totalEmployees}
+        - Abteilungsstruktur: ${JSON.stringify(departmentCounts)}
+        - Mitarbeiterdetails: ${context}
 
-        [Wiederhole für jeden weiteren Mitarbeiter]`;
+        Benutzeranfrage: "${query}"
+
+        Verstehe verschiedene Fragetypen:
+        
+        1. Allgemeine Fragen ("Wieviele Mitarbeiter haben wir?", "Welche Abteilungen gibt es?"):
+           - Gib einen kurzen Überblick
+           - Nenne relevante Zahlen
+           - Beispiel: "Aktuell beschäftigen wir 23 Mitarbeiter in 8 Abteilungen..."
+
+        2. Spezifische Mitarbeitersuchen ("Wer kennt sich mit Python aus?"):
+           - Liste passende Mitarbeiter
+           - Zeige relevante Fähigkeiten
+           - Nenne Abteilungen
+           - Beispiel: "2 Mitarbeiter haben Python-Kenntnisse..."
+
+        3. Kontaktanfragen ("Email von Max", "Wie erreiche ich Anna?"):
+           - Zeige alle verfügbaren Kontaktdaten
+           - Nenne Position und Abteilung
+           - Beispiel: "Hier sind die Kontaktdaten von Max..."
+
+        4. Abteilungsfragen ("Wer ist in der IT?", "Welche Skills hat Marketing?"):
+           - Liste Mitarbeiter der Abteilung
+           - Zeige Hauptkompetenzen
+           - Beispiel: "In der IT-Abteilung arbeiten..."
+
+        5. Skill-basierte Fragen ("Wer kann SAP?", "Suche JavaScript Entwickler"):
+           - Zeige Mitarbeiter mit passenden Skills
+           - Gruppiere nach Erfahrungslevel
+           - Beispiel: "Folgende Mitarbeiter haben SAP-Kenntnisse..."
+
+        Antwortstil:
+        - Freundlich und natürlich
+        - Klar strukturiert
+        - Direkt und informativ
+        - Bei Bedarf mit Vorschlägen für weitere relevante Informationen
+
+        Wichtig:
+        - Verstehe auch informelle Fragen
+        - Erkenne Namen auch bei Tippfehlern
+        - Biete bei unklaren Fragen Präzisierung an
+        - Verknüpfe zusammenhängende Informationen sinnvoll
+        - Gib bei Mitarbeitersuchen immer Abteilung und Position an`;
 
         try {
             console.log('Sende Prompt an Ollama:', prompt);
@@ -114,6 +136,12 @@ export class OllamaService {
                     model: this.MODEL,
                     prompt: prompt,
                     stream: false,
+                    options: {
+                        temperature: 0.4,   // Etwas flexibler für natürlichere Antworten
+                        top_k: 40,          // Mehr Variabilität
+                        top_p: 0.9,         // Gute Balance
+                        num_predict: 500     // Ausreichend für detaillierte Antworten
+                    }
                 }),
             });
 
@@ -152,13 +180,56 @@ export class OllamaService {
         return this.chat(messages);
     }
 
+    private static getDepartmentName(departmentId: number, position?: string): string {
+        const departments: Record<number, string> = {
+            1: 'IT & Entwicklung',
+            2: 'Data Science',
+            3: 'Design',
+            4: 'Marketing',
+            5: 'Projektmanagement',
+            6: 'Personal',
+            7: 'Finanzen',
+            8: 'Qualitätsmanagement',
+            9: 'Vertrieb',
+            10: 'Forschung & Entwicklung'
+        };
+        
+        // Wenn keine Abteilung zugewiesen ist, ordnen wir Entwickler der IT-Abteilung zu
+        if (!departmentId && position && this.isITRole(position)) {
+            return departments[1];
+        }
+        
+        return departments[departmentId] || departments[1]; // Default: IT & Entwicklung
+    }
+
+    private static isITRole(position: string): boolean {
+        if (!position) return false;
+        
+        const itPositions = [
+            'entwickler',
+            'developer',
+            'software',
+            'programmer',
+            'programmierer',
+            'engineer',
+            'architekt',
+            'consultant'
+        ];
+        
+        return itPositions.some(title => 
+            position.toLowerCase().includes(title.toLowerCase())
+        );
+    }
+
     private static createContextFromEmployees(employees: Employee[]): string {
         if (employees.length === 0) {
             return 'Keine Mitarbeiter mit den gesuchten Kriterien gefunden.';
         }
 
         return employees.map(emp => {
-            const department = this.getDepartmentName(emp.abteilung_id);
+            // Bestimme die Abteilung basierend auf Position und Skills
+            const department = this.getDepartmentName(emp.abteilung_id, emp.position);
+            
             return `
             Mitarbeiter: ${emp.vorname} ${emp.nachname}
             Position: ${emp.position || 'Nicht angegeben'}
@@ -169,17 +240,12 @@ export class OllamaService {
         }).join('\n');
     }
 
-    private static getDepartmentName(departmentId: number): string {
-        const departments: Record<number, string> = {
-            1: 'IT & Entwicklung',
-            2: 'Data Science & KI',
-            3: 'Design & Kreativ',
-            4: 'Marketing & Kommunikation',
-            5: 'Projektmanagement',
-            6: 'Personal & HR',
-            7: 'Finanzen & Controlling',
-            8: 'Qualität & Compliance'
-        };
-        return departments[departmentId] || 'Unbekannte Abteilung';
+    private static getDepartmentCounts(employees: Employee[]): Record<string, number> {
+        const counts: Record<string, number> = {};
+        employees.forEach(emp => {
+            const dept = this.getDepartmentName(emp.abteilung_id, emp.position);
+            counts[dept] = (counts[dept] || 0) + 1;
+        });
+        return counts;
     }
 } 
