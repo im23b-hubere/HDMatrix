@@ -1,20 +1,18 @@
 export interface PersonalInfo {
-  id?: string;
   firstName?: string;
   lastName?: string;
   email?: string;
   phone?: string;
-  address?: string;
-  location?: string;
-  birthDate?: string;
-  nationality?: string;
+  profilePicture?: string;
   title?: string;
   summary?: string;
-  availability?: string;
-  desiredEmploymentType?: string;
-  desiredPosition?: string;
-  desiredSalary?: string;
-  desiredLocation?: string;
+  location?: string;
+  birthYear?: string;
+  nationality?: string;
+  languages?: Array<{
+    language: string;
+    level: string;
+  }>;
 }
 
 export interface WorkExperience {
@@ -32,16 +30,13 @@ export interface WorkExperience {
 }
 
 export interface Education {
-  id: string;
-  degree: string;
-  field: string;
-  institution: string;
-  startDate: string;
-  endDate?: string;
-  current: boolean;
-  gpa?: number;
   start_year: string;
   end_year: string;
+  degree: string;
+  institution?: string;
+  location?: string;
+  grade?: string;
+  details?: string;
 }
 
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
@@ -87,22 +82,39 @@ export interface Experience {
   start_year: string;
   end_year: string;
   description: string;
+  company?: string;
+  position?: string;
+  location?: string;
+  achievements?: string[];
+  technologies?: string[];
+}
+
+export interface Publication {
+  title: string;
+  publisher: string;
+  date: string;
+  url?: string;
+  description?: string;
 }
 
 export interface CV {
-  id: string;
-  userId: string;
-  title: string;
-  personalInfo: PersonalInfo;
-  workExperience: WorkExperience[];
-  education: Education[];
-  skills: Skill[];
-  languages: Language[];
-  certifications: Certification[];
-  projects: Project[];
+  id?: string;
+  personalInfo?: PersonalInfo;
+  summary?: string;
+  skills?: string[];
   experience?: Experience[];
-  createdAt?: string;
-  updatedAt?: string;
+  education?: Education[];
+  certifications?: Certification[];
+  publications?: Publication[];
+  lastUpdated?: Date;
+  languages?: string[];
+  projects?: Array<{
+    name: string;
+    description: string;
+    technologies: string[];
+    role?: string;
+    url?: string;
+  }>;
 }
 
 export interface CVResponse {

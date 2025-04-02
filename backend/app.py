@@ -11,6 +11,7 @@ import PyPDF2
 import docx
 from typing import List, Dict, Any
 import re
+import uuid
 
 app = Flask(__name__)
 # Erweiterte CORS-Konfiguration
@@ -448,37 +449,138 @@ def extract_text_from_docx(filepath: str) -> str:
         return ""
 
 def analyze_cv_text(text: str) -> Dict[str, Any]:
-    # Basis-Informationen extrahieren
-    skills = []
+    # Persönliche Informationen extrahieren
+    personal_info = {}
+    
+    # Name extrahieren (erste Zeile oder nach bestimmten Mustern suchen)
+    name_patterns = [
+        r'^([A-Za-zäöüÄÖÜß]+(?:\s[A-Za-zäöüÄÖÜß-]+)*)\s*$',  # Erste Zeile
+        r'Name:\s*([A-Za-zäöüÄÖÜß]+(?:\s[A-Za-zäöüÄÖÜß-]+)*)',  # Nach "Name:"
+        r'Vor-\s*und\s*Nachname:\s*([A-Za-zäöüÄÖÜß]+(?:\s[A-Za-zäöüÄÖÜß-]+)*)'  # Nach "Vor- und Nachname:"
+    ]
+    
+    for pattern in name_patterns:
+        name_match = re.search(pattern, text, re.MULTILINE)
+        if name_match:
+            full_name = name_match.group(1).strip()
+            name_parts = full_name.split()
+            if len(name_parts) > 1:
+                personal_info['firstName'] = name_parts[0]
+                personal_info['lastName'] = ' '.join(name_parts[1:])
+            break
+
+    # Email extrahieren
+    email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+    if email_match:
+        personal_info['email'] = email_match.group(0)
+
+    # Telefonnummer extrahieren
+    phone_patterns = [
+        r'(?:Telefon|Tel|Mobil|Phone)[\s:]*([+\d\s\-()]+)',
+        r'[+\d][\d\s\-()]{10,}',
+    ]
+    for pattern in phone_patterns:
+        phone_match = re.search(pattern, text)
+        if phone_match:
+            phone = re.sub(r'\s+', ' ', phone_match.group(1) if 'group(1)' in str(phone_match) else phone_match.group(0))
+            personal_info['phone'] = phone.strip()
+            break
+
+    # Titel/Position extrahieren
+    title_patterns = [
+        r'(?:Position|Titel|Beruf|Stelle):\s*([^\n]+)',
+        r'^([A-Za-zäöüÄÖÜß\s\-]+(?:entwickler|ingenieur|architekt|berater|manager|consultant|analyst|specialist|expert|professional))\s*$'
+    ]
+    for pattern in title_patterns:
+        title_match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+        if title_match:
+            personal_info['title'] = title_match.group(1).strip()
+            break
+
+    # Zusammenfassung/Profil extrahieren
+    summary_patterns = [
+        r'(?:Profil|Zusammenfassung|Über mich|About|Summary):\s*([^\n]+(?:\n(?!\n)[^\n]+)*)',
+        r'(?:Beruflicher Werdegang|Berufserfahrung):\s*([^\n]+(?:\n(?!\n)[^\n]+)*)'
+    ]
+    for pattern in summary_patterns:
+        summary_match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+        if summary_match:
+            personal_info['summary'] = summary_match.group(1).strip()
+            break
+
+    # Skills extrahieren
+    skills = set()  # Verwende ein Set für eindeutige Skills
+    
+    # Technische Skills und Frameworks
+    tech_skills = [
+        'Python', 'Java', 'JavaScript', 'TypeScript', 'C#', 'C++', 'Ruby', 'PHP', 'Swift',
+        'React', 'Angular', 'Vue.js', 'Node.js', 'Express', 'Django', 'Flask', 'Spring',
+        'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP', 'Git', 'Jenkins', 'CI/CD',
+        'SQL', 'MongoDB', 'PostgreSQL', 'MySQL', 'Redis', 'GraphQL', 'REST API',
+        'HTML', 'CSS', 'SASS', 'Bootstrap', 'Material-UI', 'Tailwind',
+        'Agile', 'Scrum', 'Kanban', 'JIRA', 'Confluence'
+    ]
+    
+    # Suche nach Skills in verschiedenen Kontexten
+    skill_sections = [
+        r'(?:Kenntnisse|Skills|Fähigkeiten|Kompetenzen|Technologies|Technologien):\s*([^\n]+(?:\n(?!\n)[^\n]+)*)',
+        r'(?:Technical Skills|Technische Fähigkeiten):\s*([^\n]+(?:\n(?!\n)[^\n]+)*)',
+        r'(?:Programmiersprachen|Programming Languages):\s*([^\n]+(?:\n(?!\n)[^\n]+)*)'
+    ]
+    
+    # Extrahiere Skills aus spezifischen Abschnitten
+    for pattern in skill_sections:
+        section_match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+        if section_match:
+            section_text = section_match.group(1)
+            # Suche nach bekannten Skills im Abschnitt
+            for skill in tech_skills:
+                if re.search(rf'\b{re.escape(skill)}\b', section_text, re.IGNORECASE):
+                    skills.add(skill)
+    
+    # Suche auch im gesamten Text nach Skills
+    for skill in tech_skills:
+        if re.search(rf'\b{re.escape(skill)}\b', text, re.IGNORECASE):
+            skills.add(skill)
+
+    # Berufserfahrung extrahieren
     experience = []
-    education = []
+    experience_pattern = r'(\d{4})\s*-\s*(\d{4}|heute|present|aktuell|now|gegenwärtig|current)\s*(?::|,|\s)\s*([^.!?\n]+[.!?\n])'
     
-    # Skills extrahieren (Beispiel-Keywords)
-    skill_keywords = ['Python', 'Java', 'JavaScript', 'SQL', 'React', 'Angular', 'Vue', 'Docker', 'Kubernetes']
-    for keyword in skill_keywords:
-        if re.search(rf'\b{keyword}\b', text, re.IGNORECASE):
-            skills.append(keyword)
-    
-    # Erfahrung extrahieren
-    experience_pattern = r'(\d{4})\s*-\s*(\d{4}|heute).*?([^\.]+)'
-    for match in re.finditer(experience_pattern, text):
+    for match in re.finditer(experience_pattern, text, re.IGNORECASE):
+        start_year = match.group(1)
+        end_year = match.group(2)
+        if end_year.lower() in ['heute', 'present', 'aktuell', 'now', 'gegenwärtig', 'current']:
+            end_year = '2024'  # Aktuelles Jahr
+        description = match.group(3).strip()
+        
+        # Versuche, die Position/Firma zu extrahieren
+        position_company_match = re.match(r'([^@|]+)(?:@|bei|at|für|for)?\s*([^,]+)', description)
+        if position_company_match:
+            position = position_company_match.group(1).strip()
+            company = position_company_match.group(2).strip()
+            description = f"{position} bei {company}"
+        
         experience.append({
-            'start_year': match.group(1),
-            'end_year': match.group(2),
-            'description': match.group(3).strip()
+            'start_year': start_year,
+            'end_year': end_year,
+            'description': description
         })
-    
+
     # Ausbildung extrahieren
-    education_pattern = r'(\d{4})\s*-\s*(\d{4}).*?(Bachelor|Master|PhD|Diplom|Ausbildung)'
-    for match in re.finditer(education_pattern, text):
+    education = []
+    education_pattern = r'(\d{4})\s*-\s*(\d{4}|heute|present|aktuell)\s*(?::|,|\s)\s*([^.!?\n]+(?:Universität|Hochschule|Ausbildung|Bachelor|Master|Diplom|Studium|University|College|School)[^.!?\n]*[.!?\n])'
+    
+    for match in re.finditer(education_pattern, text, re.IGNORECASE):
         education.append({
             'start_year': match.group(1),
-            'end_year': match.group(2),
-            'degree': match.group(3)
+            'end_year': match.group(2) if match.group(2).lower() not in ['heute', 'present', 'aktuell'] else '2024',
+            'degree': match.group(3).strip()
         })
-    
+
     return {
-        'skills': skills,
+        'personalInfo': personal_info,
+        'skills': list(skills),
         'experience': experience,
         'education': education
     }
@@ -813,18 +915,54 @@ def extract_cv_with_ai():
         logger.info("Starte KI-basierte CV-Extraktion")
         
         # Extrahiere grundlegende Informationen aus dem Text
-        extracted_data = analyze_cv_text(text)
+        # Suche nach typischen Mustern für persönliche Informationen
+        name_match = re.search(r'^([A-Za-zäöüÄÖÜß]+(?:\s[A-Za-zäöüÄÖÜß]+)*)\s*$', text.split('\n')[0], re.MULTILINE)
+        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+        phone_match = re.search(r'(?:\+49|0)[- ]?[0-9]{3,4}[- ]?[0-9]{5,8}', text)
         
+        # Extrahiere Skills (einfache Wortliste als Beispiel)
+        skills = []
+        skill_keywords = ['Python', 'JavaScript', 'TypeScript', 'React', 'Node.js', 'SQL', 'Git', 
+                         'HTML', 'CSS', 'Java', 'C++', 'Docker', 'AWS', 'Azure', 'MongoDB']
+        for skill in skill_keywords:
+            if skill.lower() in text.lower():
+                skills.append(skill)
+
+        # Extrahiere Erfahrung
+        experience = []
+        exp_matches = re.finditer(r'(\d{4})\s*-\s*(\d{4}|\bheute\b)[:|\s]+([^\n]+)', text, re.IGNORECASE)
+        for match in exp_matches:
+            experience.append({
+                'start_year': match.group(1),
+                'end_year': match.group(2),
+                'description': match.group(3).strip()
+            })
+
+        # Extrahiere Ausbildung
+        education = []
+        edu_matches = re.finditer(r'(\d{4})\s*-\s*(\d{4})[:|\s]+([^\n]+(?:Universität|Hochschule|Ausbildung|Bachelor|Master|Diplom)[^\n]+)', text, re.IGNORECASE)
+        for match in edu_matches:
+            education.append({
+                'start_year': match.group(1),
+                'end_year': match.group(2),
+                'degree': match.group(3).strip()
+            })
+
         # Formatiere die Antwort
         cv_data = {
+            'id': str(uuid.uuid4()),
             'personalInfo': {
-                'name': '',  # Wird später durch KI ergänzt
-                'email': '',
-                'phone': ''
+                'firstName': name_match.group(1).split()[0] if name_match else '',
+                'lastName': ' '.join(name_match.group(1).split()[1:]) if name_match and len(name_match.group(1).split()) > 1 else '',
+                'email': email_match.group(0) if email_match else '',
+                'phone': phone_match.group(0) if phone_match else '',
+                'profilePicture': None,  # Wird später implementiert
+                'title': '',  # Wird später implementiert
+                'summary': ''  # Wird später implementiert
             },
-            'skills': extracted_data['skills'],
-            'experience': extracted_data['experience'],
-            'education': extracted_data['education']
+            'skills': skills,
+            'experience': experience,
+            'education': education
         }
         
         logger.info("CV-Extraktion erfolgreich")

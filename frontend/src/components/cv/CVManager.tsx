@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -20,6 +20,12 @@ import {
   Tab,
   Tabs,
   Input,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemButton,
+  Link,
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
@@ -30,6 +36,9 @@ import {
   LinkedIn as LinkedInIcon,
   Description as DescriptionIcon,
   PersonAdd as PersonAddIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  LocationOn as LocationOnIcon,
 } from '@mui/icons-material';
 import { CV } from '../../types/cv';
 import { pdfService } from '../../services/pdf-service';
@@ -72,144 +81,472 @@ interface CVManagerProps {
 const CVCard: React.FC<{ cv: CV }> = ({ cv }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  const formatTimeAgo = (date: Date | undefined) => {
+    if (!date) return 'Gerade hochgeladen';
+    
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'Gerade eben';
+    if (diffMinutes < 60) return `vor ${diffMinutes} Minuten`;
+    
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `vor ${diffHours} Stunden`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `vor ${diffDays} Tagen`;
+    
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks < 4) return `vor ${diffWeeks} Wochen`;
+    
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `vor ${diffMonths} Monaten`;
+    
+    const diffYears = Math.floor(diffDays / 365);
+    return `vor ${diffYears} Jahren`;
+  };
+
   return (
     <Card
-      sx={{ 
+      sx={{
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
+        p: 3,
+        cursor: 'pointer',
         '&:hover': {
           boxShadow: 6,
           transform: 'translateY(-4px)',
           transition: 'all 0.3s ease-in-out',
         }
       }}
+      onClick={() => setDetailsOpen(true)}
     >
-      <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.main' }}>
-              {cv.personalInfo?.firstName && cv.personalInfo?.lastName
-                ? `${cv.personalInfo.firstName[0]}${cv.personalInfo.lastName[0]}`
-                : 'CV'}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flex: 1 }}>
+          {cv.personalInfo?.profilePicture ? (
+            <Avatar
+              sx={{ width: 56, height: 56 }}
+              src={cv.personalInfo.profilePicture}
+              alt={`${cv.personalInfo.firstName} ${cv.personalInfo.lastName}`}
+            />
+          ) : (
+            <Avatar 
+              sx={{ 
+                width: 56, 
+                height: 56, 
+                bgcolor: 'primary.main',
+                fontSize: '1.4rem'
+              }}
+            >
+              {cv.personalInfo?.firstName?.[0]}{cv.personalInfo?.lastName?.[0]}
             </Avatar>
-            <Box>
-              <Typography variant="h6">
-                {cv.personalInfo?.firstName
-                  ? `${cv.personalInfo.firstName} ${cv.personalInfo.lastName}`
-                  : 'New CV'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {cv.personalInfo?.email || 'No email specified'}
-              </Typography>
-            </Box>
+          )}
+          <Box>
+            <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 500 }}>
+              {cv.personalInfo?.firstName
+                ? `${cv.personalInfo.firstName} ${cv.personalInfo.lastName}`
+                : 'Neuer Lebenslauf'}
+            </Typography>
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ mb: 1 }}
+            >
+              {cv.personalInfo?.title || 'Position nicht angegeben'}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.secondary" 
+              sx={{ display: 'block' }}
+            >
+              CV zuletzt aktualisiert: {formatTimeAgo(cv.lastUpdated)}
+            </Typography>
           </Box>
-          <IconButton>
-            <MoreVertIcon />
-          </IconButton>
         </Box>
+      </Box>
 
+      <Box sx={{ flex: 1 }}>
         <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            Skills:
+          <Typography 
+            variant="subtitle2" 
+            color="text.secondary" 
+            gutterBottom
+            sx={{ fontWeight: 500 }}
+          >
+            Skills
           </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {cv.skills?.map((skill, index) => (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8 }}>
+            {cv.skills?.slice(0, 5).map((skill, index) => (
               <Chip
                 key={index}
                 label={skill}
                 size="small"
-                sx={{ bgcolor: 'background.default' }}
+                sx={{
+                  bgcolor: 'background.default',
+                  '&:hover': { bgcolor: 'action.hover' }
+                }}
               />
             ))}
+            {cv.skills && cv.skills.length > 5 && (
+              <Chip
+                label={`+${cv.skills.length - 5}`}
+                size="small"
+                sx={{
+                  bgcolor: 'primary.light',
+                  color: 'primary.contrastText',
+                  '&:hover': { bgcolor: 'primary.main' }
+                }}
+              />
+            )}
           </Box>
         </Box>
+      </Box>
 
-        {cv.experience && cv.experience.length > 0 && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              Erfahrung:
-            </Typography>
-            {cv.experience.map((exp, index) => (
-              <Typography key={index} variant="body2">
-                {exp.start_year} - {exp.end_year}: {exp.description}
-              </Typography>
-            ))}
-          </Box>
-        )}
-
-        {cv.education && cv.education.length > 0 && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              Ausbildung:
-            </Typography>
-            {cv.education.map((edu, index) => (
-              <Typography key={index} variant="body2">
-                {edu.start_year} - {edu.end_year}: {edu.degree}
-              </Typography>
-            ))}
-          </Box>
-        )}
-
+      <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
         <Button
-          fullWidth
           variant="outlined"
-          onClick={() => setDetailsOpen(true)}
-          sx={{ mt: 2 }}
+          startIcon={<DownloadIcon />}
+          size="small"
+          fullWidth
+          sx={{ textTransform: 'none' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            // TODO: Implement download
+          }}
         >
-          Details anzeigen
+          Download CV
         </Button>
-      </CardContent>
+        <Button
+          variant="outlined"
+          size="small"
+          fullWidth
+          sx={{ textTransform: 'none' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            // TODO: Implement copy to proposal
+          }}
+        >
+          Copy to proposal
+        </Button>
+      </Box>
 
-      <Dialog
+      <CVDetails
+        cv={cv}
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          CV Details: {cv.personalInfo?.firstName} {cv.personalInfo?.lastName}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ py: 2 }}>
-            <Typography variant="h6" gutterBottom>Persönliche Informationen</Typography>
-            <Typography>Name: {cv.personalInfo?.firstName} {cv.personalInfo?.lastName}</Typography>
-            <Typography>Email: {cv.personalInfo?.email}</Typography>
-            <Typography>Telefon: {cv.personalInfo?.phone}</Typography>
+      />
+    </Card>
+  );
+};
 
-            <Typography variant="h6" sx={{ mt: 3 }} gutterBottom>Skills</Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {cv.skills?.map((skill, index) => (
-                <Chip key={index} label={skill} />
-              ))}
-            </Box>
+const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
+  cv,
+  open,
+  onClose
+}) => {
+  const [activeSection, setActiveSection] = useState('personal');
+  const sections = [
+    { id: 'personal', label: 'Persönliche Daten' },
+    { id: 'summary', label: 'Zusammenfassung' },
+    { id: 'experience', label: 'Berufserfahrung' },
+    { id: 'skills', label: 'Skills & Technologien' },
+    { id: 'education', label: 'Ausbildung' },
+    { id: 'certifications', label: 'Zertifizierungen' },
+    { id: 'languages', label: 'Sprachen' },
+    { id: 'publications', label: 'Publikationen' }
+  ];
 
-            <Typography variant="h6" sx={{ mt: 3 }} gutterBottom>Berufserfahrung</Typography>
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'personal':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Kontaktinformationen</Typography>
+            <Grid container spacing={2}>
+              {cv.personalInfo?.email && (
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <EmailIcon color="action" />
+                    <Typography>{cv.personalInfo.email}</Typography>
+                  </Box>
+                </Grid>
+              )}
+              {cv.personalInfo?.phone && (
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <PhoneIcon color="action" />
+                    <Typography>{cv.personalInfo.phone}</Typography>
+                  </Box>
+                </Grid>
+              )}
+              {cv.personalInfo?.location && (
+                <Grid item xs={12} sm={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LocationOnIcon color="action" />
+                    <Typography>{cv.personalInfo.location}</Typography>
+                  </Box>
+                </Grid>
+              )}
+            </Grid>
+          </Box>
+        );
+      
+      case 'summary':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Zusammenfassung</Typography>
+            <Typography variant="body1" paragraph>
+              {cv.personalInfo?.summary || 'Keine Zusammenfassung verfügbar.'}
+            </Typography>
+          </Box>
+        );
+      
+      case 'experience':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Berufserfahrung</Typography>
             {cv.experience?.map((exp, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Typography variant="subtitle1">
+              <Box key={index} sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                  {exp.position} {exp.company && `bei ${exp.company}`}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   {exp.start_year} - {exp.end_year}
+                  {exp.location && ` • ${exp.location}`}
                 </Typography>
-                <Typography>{exp.description}</Typography>
-              </Box>
-            ))}
-
-            <Typography variant="h6" sx={{ mt: 3 }} gutterBottom>Ausbildung</Typography>
-            {cv.education?.map((edu, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Typography variant="subtitle1">
-                  {edu.start_year} - {edu.end_year}
+                <Typography variant="body1" paragraph>
+                  {exp.description}
                 </Typography>
-                <Typography>{edu.degree}</Typography>
+                {exp.technologies && exp.technologies.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Verwendete Technologien:
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {exp.technologies.map((tech, idx) => (
+                        <Chip
+                          key={idx}
+                          label={tech}
+                          size="small"
+                          variant="outlined"
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                )}
               </Box>
             ))}
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailsOpen(false)}>Schließen</Button>
-        </DialogActions>
-      </Dialog>
-    </Card>
+        );
+      
+      case 'skills':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Skills & Technologien</Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {cv.skills?.map((skill, index) => (
+                <Chip
+                  key={index}
+                  label={skill}
+                  sx={{
+                    bgcolor: 'background.default',
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                />
+              ))}
+            </Box>
+          </Box>
+        );
+      
+      case 'education':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Ausbildung</Typography>
+            {cv.education?.map((edu, index) => (
+              <Box key={index} sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                  {edu.degree}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {edu.institution && `${edu.institution} • `}
+                  {edu.start_year} - {edu.end_year}
+                  {edu.location && ` • ${edu.location}`}
+                </Typography>
+                {edu.details && (
+                  <Typography variant="body1">
+                    {edu.details}
+                  </Typography>
+                )}
+              </Box>
+            ))}
+          </Box>
+        );
+      
+      case 'certifications':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Zertifizierungen</Typography>
+            {cv.certifications?.map((cert, index) => (
+              <Box key={index} sx={{ mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                  {cert.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {cert.issuer} • Ausgestellt: {cert.issueDate}
+                  {cert.expiryDate && ` • Gültig bis: ${cert.expiryDate}`}
+                </Typography>
+                {cert.credentialId && (
+                  <Typography variant="body2" color="text.secondary">
+                    Credential ID: {cert.credentialId}
+                  </Typography>
+                )}
+              </Box>
+            ))}
+          </Box>
+        );
+      
+      case 'languages':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Sprachen</Typography>
+            {cv.personalInfo?.languages?.map((lang, index) => (
+              <Box key={index} sx={{ mb: 2 }}>
+                <Typography variant="subtitle1">
+                  {lang.language}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Niveau: {lang.level}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        );
+      
+      case 'publications':
+        return (
+          <Box>
+            <Typography variant="h6" gutterBottom>Publikationen</Typography>
+            {cv.publications?.map((pub, index) => (
+              <Box key={index} sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                  {pub.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {pub.publisher} • {pub.date}
+                </Typography>
+                {pub.description && (
+                  <Typography variant="body1" paragraph>
+                    {pub.description}
+                  </Typography>
+                )}
+                {pub.url && (
+                  <Link href={pub.url} target="_blank" rel="noopener noreferrer">
+                    Publikation ansehen
+                  </Link>
+                )}
+              </Box>
+            ))}
+          </Box>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{
+        sx: { height: '90vh' }
+      }}
+    >
+      <DialogTitle sx={{ px: 4, py: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          {cv.personalInfo?.profilePicture ? (
+            <Avatar
+              sx={{ width: 100, height: 100 }}
+              src={cv.personalInfo.profilePicture}
+              alt={`${cv.personalInfo.firstName} ${cv.personalInfo.lastName}`}
+            />
+          ) : (
+            <Avatar
+              sx={{
+                width: 100,
+                height: 100,
+                bgcolor: 'primary.main',
+                fontSize: '2.5rem'
+              }}
+            >
+              {cv.personalInfo?.firstName?.[0]}{cv.personalInfo?.lastName?.[0]}
+            </Avatar>
+          )}
+          <Box>
+            <Typography variant="h4" gutterBottom>
+              {cv.personalInfo?.firstName} {cv.personalInfo?.lastName}
+            </Typography>
+            <Typography variant="h6" color="text.secondary">
+              {cv.personalInfo?.title}
+            </Typography>
+          </Box>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent sx={{ px: 4, py: 3 }}>
+        <Grid container spacing={4}>
+          <Grid item xs={3}>
+            <Paper 
+              sx={{ 
+                p: 2, 
+                bgcolor: 'background.default',
+                position: 'sticky',
+                top: 20
+              }}
+            >
+              <List>
+                {sections.map((section) => (
+                  <ListItemButton
+                    key={section.id}
+                    selected={activeSection === section.id}
+                    onClick={() => setActiveSection(section.id)}
+                    sx={{
+                      borderRadius: 1,
+                      mb: 0.5,
+                      '&.Mui-selected': {
+                        bgcolor: 'primary.main',
+                        color: 'primary.contrastText',
+                        '&:hover': {
+                          bgcolor: 'primary.dark',
+                        }
+                      }
+                    }}
+                  >
+                    <ListItemText primary={section.label} />
+                  </ListItemButton>
+                ))}
+              </List>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={9}>
+            {renderSection()}
+          </Grid>
+        </Grid>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 4, py: 2, borderTop: 1, borderColor: 'divider' }}>
+        <Button onClick={onClose} variant="outlined">
+          Schließen
+        </Button>
+        <Button variant="contained" startIcon={<DownloadIcon />}>
+          CV herunterladen
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
