@@ -1,197 +1,603 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import logging
+from datetime import datetime
+import os
+from werkzeug.utils import secure_filename
+import json
+import PyPDF2
+import docx
+from typing import List, Dict, Any
+import re
 
 app = Flask(__name__)
 CORS(app)
 
-# Datenbankverbindung konfigurieren
+# Konfiguriere Logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Konfiguration
+UPLOAD_FOLDER = 'uploads/cvs'
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Stelle sicher, dass der Upload-Ordner existiert
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Datenbank-Konfiguration
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
+    'dbname': 'TalentBridgeDB',
+    'user': 'postgres',
     'password': 'hello1234',
-    'database': 'talentbridgedb',
-    'port': 3306
+    'host': 'localhost',
+    'port': '5432'
 }
 
 def get_db_connection():
     try:
-        print("Versuche Verbindung zur Datenbank herzustellen...")
-        connection = mysql.connector.connect(**DB_CONFIG)
-        
-        if connection.is_connected():
-            db_info = connection.get_server_info()
-            print(f"Erfolgreich verbunden mit MySQL Server version {db_info}")
-            return connection
-        else:
-            print("Verbindung konnte nicht hergestellt werden")
-            return None
-    except Error as e:
-        print(f"Fehler bei der Datenbankverbindung: {e}")
-        return None
+        conn = psycopg2.connect(**DB_CONFIG)
+        return conn
+    except Exception as e:
+        logger.error(f"Datenbankverbindungsfehler: {str(e)}")
+        raise
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/api/employees/search', methods=['GET'])
 def search_employees():
-    connection = None
-    cursor = None
     try:
-        query = request.args.get('query', '')
-        department = request.args.get('department')
-        skills = request.args.get('skills', '').split(',') if request.args.get('skills') else []
-
-        print(f"Received search query: {query}")  # Debug output
-        print(f"Department: {department}")  # Debug output
-        print(f"Skills: {skills}")  # Debug output
-
-        connection = get_db_connection()
-        if not connection:
-            print("Keine Datenbankverbindung möglich")
-            return jsonify({'error': 'Datenbankverbindung fehlgeschlagen'}), 500
-
-        cursor = connection.cursor(dictionary=True)
+        skills = request.args.get('skills', '').split(',')
+        skills = [skill.strip() for skill in skills if skill.strip()]
         
-        # Basis-Query mit LOWER() für case-insensitive Suche
-        sql = """
-        SELECT DISTINCT m.mitarbeiter_id as id, m.vorname, m.nachname, 
-               m.email, m.faehigkeiten, m.abteilungs_id,
-               a.name as abteilung
-        FROM mitarbeiter m
-        LEFT JOIN abteilungen a ON m.abteilungs_id = a.abteilungs_id
-        WHERE 1=1
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Erweiterte Suche mit allen relevanten Informationen
+        query = """
+        SELECT 
+            m.*,
+            array_agg(DISTINCT p.projektname) as projekte,
+            array_agg(DISTINCT w.thema) as weiterbildungen,
+            array_agg(DISTINCT b.kategorie) as bewertungskategorien,
+            array_agg(DISTINCT b.punkte) as bewertungspunkte
+        FROM Mitarbeiter m
+        LEFT JOIN Projekterfahrungen p ON m.id = p.mitarbeiter_id
+        LEFT JOIN Weiterbildungen w ON m.id = w.mitarbeiter_id
+        LEFT JOIN Bewertungen b ON m.id = b.mitarbeiter_id
+        WHERE EXISTS (
+            SELECT 1 FROM unnest(m.skills) s
+            WHERE s ILIKE ANY(%s)
+        )
+        GROUP BY m.id
         """
-        params = []
-
-        # Suchbegriff
-        if query:
-            sql += """ AND (
-                LOWER(m.vorname) LIKE LOWER(%s) 
-                OR LOWER(m.nachname) LIKE LOWER(%s) 
-                OR LOWER(m.faehigkeiten) LIKE LOWER(%s)
-            )"""
-            search_term = f"%{query}%"
-            params.extend([search_term] * 3)
-
-        # Abteilungsfilter
-        if department:
-            sql += " AND m.abteilungs_id = %s"
-            params.append(int(department))
-
-        # Skills-Filter
-        if skills and skills[0]:  # Prüfe ob skills nicht leer ist
-            skill_conditions = []
-            for skill in skills:
-                skill_conditions.append("LOWER(m.faehigkeiten) LIKE LOWER(%s)")
-                params.append(f"%{skill}%")
-            sql += " AND (" + " OR ".join(skill_conditions) + ")"
-
-        print(f"Executing SQL: {sql}")  # Debug output
-        print(f"With params: {params}")  # Debug output
         
-        cursor.execute(sql, params)
-        employees = cursor.fetchall()
-
-        print(f"Found {len(employees)} employees")  # Debug output
-        for emp in employees:  # Debug output
-            print(f"Employee: {emp}")  # Debug output
-
-        # Fähigkeiten für jeden Mitarbeiter aufbereiten
-        result_employees = []
-        for employee in employees:
-            try:
-                emp_dict = dict(employee)  # Erstelle eine Kopie des Mitarbeiters
-                
-                if emp_dict.get('faehigkeiten'):
-                    emp_dict['skills'] = [skill.strip() for skill in emp_dict['faehigkeiten'].split(',')]
-                else:
-                    emp_dict['skills'] = []
-                del emp_dict['faehigkeiten']  # Original-Feld entfernen
-                
-                # Setze Standardwerte
-                emp_dict['position'] = 'Software Entwickler'  # Position immer als Standard setzen
-                if emp_dict.get('abteilung') is None:
-                    emp_dict['abteilung'] = 'IT & Entwicklung'
-                
-                result_employees.append(emp_dict)
-            except Exception as e:
-                print(f"Fehler bei der Verarbeitung des Mitarbeiters {employee.get('id', 'unknown')}: {str(e)}")
-                continue
-
-        result = {'employees': result_employees}
-        print(f"Returning result: {result}")  # Debug output
-        return jsonify(result)
-
+        cur.execute(query, (skills,))
+        results = cur.fetchall()
+        
+        # Formatiere die Ergebnisse
+        employees = []
+        for row in results:
+            employee = {
+                'id': row['id'],
+                'vorname': row['vorname'],
+                'nachname': row['nachname'],
+                'position': row['position'],
+                'abteilung_id': row['abteilung_id'],
+                'email': row['email'],
+                'skills': row['skills'],
+                'projekte': row['projekte'],
+                'weiterbildungen': row['weiterbildungen'],
+                'bewertungen': dict(zip(row['bewertungskategorien'], row['bewertungspunkte']))
+            }
+            employees.append(employee)
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(employees)
+        
     except Exception as e:
-        print(f"Unerwarteter Fehler: {str(e)}")  # Debug output
-        return jsonify({'error': f'Unerwarteter Fehler: {str(e)}'}), 500
-    finally:
-        try:
-            if cursor:
-                cursor.close()
-            if connection and connection.is_connected():
-                connection.close()
-                print("Datenbankverbindung geschlossen")
-        except Exception as e:
-            print(f"Fehler beim Schließen der Verbindung: {str(e)}")
+        logger.error(f"Fehler bei der Mitarbeitersuche: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/departments', methods=['GET'])
-def get_departments():
-    connection = get_db_connection()
-    if not connection:
-        return jsonify({'error': 'Datenbankverbindung fehlgeschlagen'}), 500
-
+@app.route('/api/employees/<int:employee_id>', methods=['GET'])
+def get_employee_details(employee_id):
     try:
-        cursor = connection.cursor(dictionary=True)
-        # Wir verwenden Aliase, um die Spaltennamen für das Frontend anzupassen
-        cursor.execute("SELECT abteilungs_id as id, name FROM abteilungen")
-        departments = cursor.fetchall()
-        return jsonify(departments)
-    except Error as e:
-        error_msg = str(e)
-        print(f"Detaillierter Datenbankfehler: {error_msg}")
-        return jsonify({'error': f'Datenbankfehler: {error_msg}'}), 500
-    finally:
-        if connection and connection.is_connected():
-            cursor.close()
-            connection.close()
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Hole alle Details eines Mitarbeiters
+        query = """
+        SELECT 
+            m.*,
+            json_agg(DISTINCT jsonb_build_object(
+                'id', p.id,
+                'projektname', p.projektname,
+                'rolle', p.rolle,
+                'start_datum', p.start_datum,
+                'end_datum', p.end_datum,
+                'beschreibung', p.beschreibung,
+                'technologien', p.verwendete_technologien
+            )) as projekterfahrungen,
+            json_agg(DISTINCT jsonb_build_object(
+                'id', w.id,
+                'thema', w.thema,
+                'anbieter', w.anbieter,
+                'datum', w.datum,
+                'zertifikat', w.zertifikat,
+                'beschreibung', w.beschreibung
+            )) as weiterbildungen,
+            json_agg(DISTINCT jsonb_build_object(
+                'id', b.id,
+                'kategorie', b.kategorie,
+                'punkte', b.punkte,
+                'kommentar', b.kommentar,
+                'datum', b.datum
+            )) as bewertungen
+        FROM Mitarbeiter m
+        LEFT JOIN Projekterfahrungen p ON m.id = p.mitarbeiter_id
+        LEFT JOIN Weiterbildungen w ON m.id = w.mitarbeiter_id
+        LEFT JOIN Bewertungen b ON m.id = b.mitarbeiter_id
+        WHERE m.id = %s
+        GROUP BY m.id
+        """
+        
+        cur.execute(query, (employee_id,))
+        result = cur.fetchone()
+        
+        if result:
+            employee = {
+                'id': result['id'],
+                'vorname': result['vorname'],
+                'nachname': result['nachname'],
+                'position': result['position'],
+                'abteilung_id': result['abteilung_id'],
+                'email': result['email'],
+                'skills': result['skills'],
+                'projekterfahrungen': result['projekterfahrungen'],
+                'weiterbildungen': result['weiterbildungen'],
+                'bewertungen': result['bewertungen']
+            }
+        else:
+            employee = None
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(employee)
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Mitarbeiterdetails: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/skills', methods=['GET'])
 def get_skills():
-    connection = get_db_connection()
-    if not connection:
-        return jsonify({'error': 'Datenbankverbindung fehlgeschlagen'}), 500
-
     try:
-        cursor = connection.cursor(dictionary=True)
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Alle eindeutigen Fähigkeiten aus der mitarbeiter-Tabelle extrahieren
-        cursor.execute("""
-            SELECT DISTINCT faehigkeiten 
-            FROM mitarbeiter 
-            WHERE faehigkeiten IS NOT NULL AND faehigkeiten != ''
-        """)
+        # Hole alle einzigartigen Skills aus allen relevanten Tabellen
+        query = """
+        SELECT DISTINCT unnest(skills) as skill
+        FROM Mitarbeiter
+        UNION
+        SELECT DISTINCT unnest(verwendete_technologien)
+        FROM Projekterfahrungen
+        WHERE verwendete_technologien IS NOT NULL
+        ORDER BY skill
+        """
         
-        # Alle Fähigkeiten sammeln und aufteilen
-        all_skills = set()
-        for row in cursor.fetchall():
-            # Annahme: Fähigkeiten sind durch Kommas getrennt
-            if row['faehigkeiten']:
-                skills = [skill.strip() for skill in row['faehigkeiten'].split(',')]
-                all_skills.update(skills)
+        cur.execute(query)
+        results = cur.fetchall()
         
-        # Sortierte Liste zurückgeben
-        skills_list = sorted(list(all_skills))
-        print(f"Gefundene Fähigkeiten: {skills_list}")
-        return jsonify(skills_list)
+        skills = [row['skill'] for row in results]
         
-    except Error as e:
-        error_msg = str(e)
-        print(f"Detaillierter Datenbankfehler: {error_msg}")
-        return jsonify({'error': f'Datenbankfehler: {error_msg}'}), 500
+        cur.close()
+        conn.close()
+        
+        return jsonify(skills)
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Skills: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees', methods=['POST'])
+def create_employee():
+    try:
+        data = request.json
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        query = """
+        INSERT INTO Mitarbeiter (
+            vorname, nachname, position, abteilung_id, email, skills,
+            geburtsdatum, eintrittsdatum, ausbildungsgrad, sprachen, zertifikate
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """
+        
+        cur.execute(query, (
+            data['vorname'], data['nachname'], data['position'],
+            data['abteilung_id'], data['email'], data['skills'],
+            data.get('geburtsdatum'), data.get('eintrittsdatum'),
+            data.get('ausbildungsgrad'), data.get('sprachen'),
+            data.get('zertifikate')
+        ))
+        
+        employee_id = cur.fetchone()['id']
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({'id': employee_id, 'message': 'Mitarbeiter erfolgreich erstellt'})
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Mitarbeiters: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/<int:employee_id>/cv', methods=['POST'])
+def upload_cv(employee_id):
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Keine Datei hochgeladen'}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+            
+        if file and allowed_file(file.filename):
+            filename = secure_filename(f"{employee_id}_{file.filename}")
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                "UPDATE Mitarbeiter SET cv_path = %s WHERE id = %s",
+                (filepath, employee_id)
+            )
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            return jsonify({'message': 'CV erfolgreich hochgeladen'})
+            
+        return jsonify({'error': 'Nicht erlaubter Dateityp'}), 400
+        
+    except Exception as e:
+        logger.error(f"Fehler beim CV-Upload: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/<int:employee_id>/cv', methods=['GET'])
+def get_cv(employee_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT cv_path FROM Mitarbeiter WHERE id = %s", (employee_id,))
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            return jsonify({'error': 'CV nicht gefunden'}), 404
+            
+        return send_file(result[0])
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen des CVs: {str(e)}")
+        return jsonify({'error': str(e)}), 500
     finally:
-        if connection and connection.is_connected():
-            cursor.close()
-            connection.close()
+        cur.close()
+        conn.close()
+
+@app.route('/api/employees/search/advanced', methods=['GET'])
+def advanced_search():
+    try:
+        params = request.args
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        query = """
+        SELECT DISTINCT m.*,
+            array_agg(DISTINCT p.projektname) as projekte,
+            array_agg(DISTINCT w.thema) as weiterbildungen,
+            array_agg(DISTINCT b.kategorie) as bewertungskategorien,
+            array_agg(DISTINCT b.punkte) as bewertungspunkte
+        FROM Mitarbeiter m
+        LEFT JOIN Projekterfahrungen p ON m.id = p.mitarbeiter_id
+        LEFT JOIN Weiterbildungen w ON m.id = w.mitarbeiter_id
+        LEFT JOIN Bewertungen b ON m.id = b.mitarbeiter_id
+        WHERE 1=1
+        """
+        
+        conditions = []
+        values = []
+        
+        if params.get('skills'):
+            skills = params.get('skills').split(',')
+            conditions.append("EXISTS (SELECT 1 FROM unnest(m.skills) s WHERE s ILIKE ANY(%s))")
+            values.append(skills)
+            
+        if params.get('abteilung_id'):
+            conditions.append("m.abteilung_id = %s")
+            values.append(params.get('abteilung_id'))
+            
+        if params.get('min_experience'):
+            conditions.append("EXISTS (SELECT 1 FROM Projekterfahrungen p WHERE p.mitarbeiter_id = m.id AND p.start_datum <= NOW() - INTERVAL '%s years')")
+            values.append(params.get('min_experience'))
+            
+        if params.get('project_type'):
+            conditions.append("EXISTS (SELECT 1 FROM Projekterfahrungen p WHERE p.mitarbeiter_id = m.id AND p.projektname ILIKE %s)")
+            values.append(f"%{params.get('project_type')}%")
+            
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+            
+        query += " GROUP BY m.id"
+        
+        cur.execute(query, values)
+        results = cur.fetchall()
+        
+        employees = []
+        for row in results:
+            employee = {
+                'id': row['id'],
+                'vorname': row['vorname'],
+                'nachname': row['nachname'],
+                'position': row['position'],
+                'abteilung_id': row['abteilung_id'],
+                'email': row['email'],
+                'skills': row['skills'],
+                'projekte': row['projekte'],
+                'weiterbildungen': row['weiterbildungen'],
+                'bewertungen': dict(zip(row['bewertungskategorien'], row['bewertungspunkte']))
+            }
+            employees.append(employee)
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(employees)
+        
+    except Exception as e:
+        logger.error(f"Fehler bei der erweiterten Suche: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+def extract_text_from_pdf(filepath: str) -> str:
+    try:
+        with open(filepath, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text()
+            return text
+    except Exception as e:
+        logger.error(f"Fehler beim PDF-Extrahieren: {str(e)}")
+        return ""
+
+def extract_text_from_docx(filepath: str) -> str:
+    try:
+        doc = docx.Document(filepath)
+        text = ""
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + "\n"
+        return text
+    except Exception as e:
+        logger.error(f"Fehler beim DOCX-Extrahieren: {str(e)}")
+        return ""
+
+def analyze_cv_text(text: str) -> Dict[str, Any]:
+    # Basis-Informationen extrahieren
+    skills = []
+    experience = []
+    education = []
+    
+    # Skills extrahieren (Beispiel-Keywords)
+    skill_keywords = ['Python', 'Java', 'JavaScript', 'SQL', 'React', 'Angular', 'Vue', 'Docker', 'Kubernetes']
+    for keyword in skill_keywords:
+        if re.search(rf'\b{keyword}\b', text, re.IGNORECASE):
+            skills.append(keyword)
+    
+    # Erfahrung extrahieren
+    experience_pattern = r'(\d{4})\s*-\s*(\d{4}|heute).*?([^\.]+)'
+    for match in re.finditer(experience_pattern, text):
+        experience.append({
+            'start_year': match.group(1),
+            'end_year': match.group(2),
+            'description': match.group(3).strip()
+        })
+    
+    # Ausbildung extrahieren
+    education_pattern = r'(\d{4})\s*-\s*(\d{4}).*?(Bachelor|Master|PhD|Diplom|Ausbildung)'
+    for match in re.finditer(education_pattern, text):
+        education.append({
+            'start_year': match.group(1),
+            'end_year': match.group(2),
+            'degree': match.group(3)
+        })
+    
+    return {
+        'skills': skills,
+        'experience': experience,
+        'education': education
+    }
+
+@app.route('/api/employees/<int:employee_id>/cv/analyze', methods=['POST'])
+def analyze_cv(employee_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Hole CV-Pfad
+        cur.execute("SELECT cv_path FROM Mitarbeiter WHERE id = %s", (employee_id,))
+        result = cur.fetchone()
+        
+        if not result or not result[0]:
+            return jsonify({'error': 'CV nicht gefunden'}), 404
+            
+        filepath = result[0]
+        file_extension = filepath.split('.')[-1].lower()
+        
+        # Extrahiere Text basierend auf Dateityp
+        if file_extension == 'pdf':
+            text = extract_text_from_pdf(filepath)
+        elif file_extension in ['doc', 'docx']:
+            text = extract_text_from_docx(filepath)
+        else:
+            return jsonify({'error': 'Nicht unterstützter Dateityp'}), 400
+        
+        # Analysiere Text
+        analysis = analyze_cv_text(text)
+        
+        # Aktualisiere Mitarbeiterinformationen
+        cur.execute("""
+            UPDATE Mitarbeiter 
+            SET skills = %s,
+                ausbildungsgrad = %s
+            WHERE id = %s
+        """, (
+            analysis['skills'],
+            analysis['education'][0]['degree'] if analysis['education'] else None,
+            employee_id
+        ))
+        
+        # Speichere Projekterfahrungen
+        for exp in analysis['experience']:
+            cur.execute("""
+                INSERT INTO Projekterfahrungen (
+                    mitarbeiter_id, start_datum, end_datum, beschreibung
+                ) VALUES (%s, %s, %s, %s)
+            """, (
+                employee_id,
+                f"{exp['start_year']}-01-01",
+                f"{exp['end_year']}-12-31" if exp['end_year'] != 'heute' else None,
+                exp['description']
+            ))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'message': 'CV erfolgreich analysiert',
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        logger.error(f"Fehler bei der CV-Analyse: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/projects', methods=['POST'])
+def create_project():
+    try:
+        data = request.json
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        query = """
+        INSERT INTO Projekterfahrungen (
+            mitarbeiter_id, projektname, rolle, start_datum, end_datum,
+            beschreibung, verwendete_technologien
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """
+        
+        cur.execute(query, (
+            data['mitarbeiter_id'],
+            data['projektname'],
+            data['rolle'],
+            data['start_datum'],
+            data.get('end_datum'),
+            data.get('beschreibung'),
+            data.get('verwendete_technologien')
+        ))
+        
+        project_id = cur.fetchone()['id']
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({'id': project_id, 'message': 'Projekt erfolgreich erstellt'})
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Projekts: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/training', methods=['POST'])
+def create_training():
+    try:
+        data = request.json
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        query = """
+        INSERT INTO Weiterbildungen (
+            mitarbeiter_id, thema, anbieter, datum, zertifikat, beschreibung
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """
+        
+        cur.execute(query, (
+            data['mitarbeiter_id'],
+            data['thema'],
+            data['anbieter'],
+            data['datum'],
+            data.get('zertifikat'),
+            data.get('beschreibung')
+        ))
+        
+        training_id = cur.fetchone()['id']
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({'id': training_id, 'message': 'Weiterbildung erfolgreich erstellt'})
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen der Weiterbildung: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/evaluations', methods=['POST'])
+def create_evaluation():
+    try:
+        data = request.json
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        query = """
+        INSERT INTO Bewertungen (
+            mitarbeiter_id, kategorie, punkte, kommentar, datum
+        ) VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+        """
+        
+        cur.execute(query, (
+            data['mitarbeiter_id'],
+            data['kategorie'],
+            data['punkte'],
+            data.get('kommentar'),
+            data.get('datum', datetime.now().date())
+        ))
+        
+        evaluation_id = cur.fetchone()['id']
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({'id': evaluation_id, 'message': 'Bewertung erfolgreich erstellt'})
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen der Bewertung: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True) 
+    app.run(debug=True) 
