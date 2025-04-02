@@ -1,39 +1,38 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { ThemeProvider } from "@/components/theme-provider"
+import React, { useState } from "react"
+import { ThemeProvider, createTheme } from "@mui/material"
 import { ChatInterface } from "./components/chat-interface"
 import { EmployeeSearch } from "./components/employee-search"
 import { Dashboard } from "./components/dashboard"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
-import { Moon, Sun, Menu, X, Search, MessageSquare, LayoutDashboard } from "lucide-react"
+import { Moon, Sun, Menu, X, Search, MessageSquare, LayoutDashboard, FileText, FileSpreadsheet, Layout, Bot } from "lucide-react"
 import { useMediaQuery } from "@/hooks/use-mobile"
 import "./index.css"
+import { TemplateManager } from "@/components"
+import { CVManager } from "./components/cv/CVManager"
+import { Navigation } from './components/Navigation'
+import { Box, CssBaseline } from '@mui/material'
+import { CV } from './types/cv'
 
 function App() {
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [activeTab, setActiveTab] = useState("dashboard")
   const [menuOpen, setMenuOpen] = useState(false)
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const [cvs, setCVs] = useState<CV[]>([])
+
+  const muiTheme = createTheme({
+    palette: {
+      mode: theme,
+    },
+  })
 
   // Apply theme class to body for global styling
-  useEffect(() => {
+  React.useEffect(() => {
     document.body.classList.toggle("dark", theme === "dark")
-
-    // Save theme preference
-    localStorage.setItem("talentbridge-theme", theme)
   }, [theme])
-
-  // Load saved theme on initial render
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("talentbridge-theme") as "light" | "dark" | null
-    if (savedTheme) {
-      setTheme(savedTheme)
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark")
-    }
-  }, [])
 
   const toggleTheme = () => {
     setTheme(theme === "light" ? "dark" : "light")
@@ -45,13 +44,66 @@ function App() {
   }
 
   const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" /> },
-    { id: "search", label: "Mitarbeiter-Suche", icon: <Search className="h-5 w-5" /> },
-    { id: "chat", label: "KI-Assistent", icon: <MessageSquare className="h-5 w-5" /> },
+    { label: 'Dashboard', icon: Layout, value: 'dashboard' },
+    { label: 'CV Manager', icon: FileText, value: 'cv' },
+    { label: 'Employee Search', icon: Search, value: 'employee-search' },
+    { label: 'AI Assistant', icon: Bot, value: 'ai-assistant' },
   ]
 
+  const handleSaveCV = (cv: CV) => {
+    const existingIndex = cvs.findIndex((c) => c.id === cv.id)
+    if (existingIndex >= 0) {
+      const updatedCVs = [...cvs]
+      updatedCVs[existingIndex] = cv
+      setCVs(updatedCVs)
+    } else {
+      setCVs([...cvs, cv])
+    }
+  }
+
+  const handleDeleteCV = (cvId: string) => {
+    setCVs(cvs.filter((cv) => cv.id !== cvId))
+  }
+
+  const handleDuplicateCV = (cvId: string) => {
+    const cvToDuplicate = cvs.find((cv) => cv.id === cvId)
+    if (cvToDuplicate) {
+      const duplicatedCV: CV = {
+        ...cvToDuplicate,
+        id: Date.now().toString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      setCVs([...cvs, duplicatedCV])
+    }
+  }
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'cv':
+        return (
+          <CVManager
+            cvs={cvs}
+            onSave={handleSaveCV}
+            onDelete={handleDeleteCV}
+            onDuplicate={handleDuplicateCV}
+            severity="success"
+          />
+        )
+      case 'dashboard':
+        return <Dashboard />
+      case 'employee-search':
+        return <EmployeeSearch />
+      case 'ai-assistant':
+        return <ChatInterface />
+      default:
+        return null
+    }
+  }
+
   return (
-    <ThemeProvider defaultTheme={theme} storageKey="talentbridge-theme">
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -82,10 +134,10 @@ function App() {
                     }}
                   />
                   <div className="absolute inset-0 flex items-center justify-center text-primary-foreground font-bold">
-                    TB
+                    HR
                   </div>
                 </div>
-                <h1 className="text-xl font-bold">TalentBridge</h1>
+                <h1 className="text-xl font-bold">HRMatrix</h1>
               </motion.div>
             </div>
 
@@ -127,24 +179,13 @@ function App() {
                     animate="open"
                     exit="closed"
                   >
-                    <nav className="space-y-2">
-                      {navItems.map((item) => (
-                        <Button
-                          key={item.id}
-                          variant={activeTab === item.id ? "default" : "ghost"}
-                          className="w-full justify-start"
-                          onClick={() => {
-                            setActiveTab(item.id)
-                            setMenuOpen(false)
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            {item.icon}
-                            <span>{item.label}</span>
-                          </div>
-                        </Button>
-                      ))}
-                    </nav>
+                    <Navigation
+                      items={navItems}
+                      activeItem={activeTab}
+                      onItemSelect={setActiveTab}
+                      isDarkMode={theme === "dark"}
+                      onThemeToggle={toggleTheme}
+                    />
                   </motion.div>
                 </>
               )}
@@ -154,25 +195,13 @@ function App() {
           {/* Desktop Sidebar */}
           {!isMobile && (
             <div className="w-64 border-r p-4 hidden md:block">
-              <nav className="space-y-2 sticky top-20">
-                {navItems.map((item) => (
-                  <Button
-                    key={item.id}
-                    variant={activeTab === item.id ? "default" : "ghost"}
-                    className="w-full justify-start"
-                    onClick={() => setActiveTab(item.id)}
-                  >
-                    <motion.div
-                      className="flex items-center gap-2"
-                      whileHover={{ x: 5 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 10 }}
-                    >
-                      {item.icon}
-                      <span>{item.label}</span>
-                    </motion.div>
-                  </Button>
-                ))}
-              </nav>
+              <Navigation
+                items={navItems}
+                activeItem={activeTab}
+                onItemSelect={setActiveTab}
+                isDarkMode={theme === "dark"}
+                onThemeToggle={toggleTheme}
+              />
             </div>
           )}
 
@@ -187,9 +216,7 @@ function App() {
                 transition={{ duration: 0.3 }}
                 className="w-full max-w-5xl mx-auto"
               >
-                {activeTab === "dashboard" && <Dashboard />}
-                {activeTab === "search" && <EmployeeSearch />}
-                {activeTab === "chat" && <ChatInterface />}
+                {renderContent()}
               </motion.div>
             </AnimatePresence>
           </main>

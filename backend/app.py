@@ -13,7 +13,15 @@ from typing import List, Dict, Any
 import re
 
 app = Flask(__name__)
-CORS(app)
+# Erweiterte CORS-Konfiguration
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000", "http://localhost:3002"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "Accept"],
+        "supports_credentials": True
+    }
+})
 
 # Konfiguriere Logging
 logging.basicConfig(level=logging.DEBUG)
@@ -46,6 +54,53 @@ def get_db_connection():
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/api/pdf/extract-text', methods=['POST', 'OPTIONS'])
+def extract_text_from_upload():
+    if request.method == 'OPTIONS':
+        return '', 204
+        
+    try:
+        logger.info("PDF-Extraktionsanfrage empfangen")
+        if 'file' not in request.files:
+            logger.error("Keine Datei in der Anfrage")
+            return jsonify({'error': 'Keine Datei hochgeladen'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            logger.error("Leerer Dateiname")
+            return jsonify({'error': 'Keine Datei ausgewählt'}), 400
+        
+        if not allowed_file(file.filename):
+            logger.error(f"Nicht erlaubter Dateityp: {file.filename}")
+            return jsonify({'error': 'Nicht unterstütztes Dateiformat'}), 400
+
+        logger.info(f"Verarbeite Datei: {file.filename}")
+        # Speichere die Datei temporär
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Extrahiere Text basierend auf Dateityp
+        if filename.endswith('.pdf'):
+            logger.info("Extrahiere Text aus PDF")
+            text = extract_text_from_pdf(filepath)
+        elif filename.endswith(('.doc', '.docx')):
+            logger.info("Extrahiere Text aus DOCX")
+            text = extract_text_from_docx(filepath)
+        else:
+            logger.error(f"Nicht unterstütztes Dateiformat: {filename}")
+            return jsonify({'error': 'Nicht unterstütztes Dateiformat'}), 400
+
+        # Lösche die temporäre Datei
+        os.remove(filepath)
+        logger.info("Textextraktion erfolgreich abgeschlossen")
+
+        return jsonify({'text': text})
+
+    except Exception as e:
+        logger.error(f"Fehler bei der Textextraktion: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/employees/search', methods=['GET'])
 def search_employees():
@@ -597,6 +652,210 @@ def create_evaluation():
         
     except Exception as e:
         logger.error(f"Fehler beim Erstellen der Bewertung: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates', methods=['GET'])
+def get_templates():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        query = """
+        SELECT t.*, 
+               json_agg(jsonb_build_object(
+                   'id', tv.id,
+                   'name', tv.name,
+                   'description', tv.description,
+                   'required', tv.required,
+                   'default_value', tv.default_value
+               )) as variables
+        FROM templates t
+        LEFT JOIN template_variables tv ON t.id = tv.template_id
+        WHERE t.is_active = true
+        GROUP BY t.id
+        """
+        
+        cur.execute(query)
+        templates = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(templates)
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Templates: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates', methods=['POST'])
+def create_template():
+    try:
+        data = request.get_json()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Template erstellen
+        template_query = """
+        INSERT INTO templates (name, description, category, content, created_by)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+        """
+        
+        cur.execute(template_query, (
+            data['name'],
+            data.get('description'),
+            data['category'],
+            data['content'],
+            data.get('created_by', 1)  # Temporär hardcoded
+        ))
+        
+        template_id = cur.fetchone()[0]
+        
+        # Template-Variablen erstellen
+        if 'variables' in data:
+            for var in data['variables']:
+                var_query = """
+                INSERT INTO template_variables 
+                (template_id, name, description, required, default_value)
+                VALUES (%s, %s, %s, %s, %s)
+                """
+                cur.execute(var_query, (
+                    template_id,
+                    var['name'],
+                    var.get('description'),
+                    var.get('required', False),
+                    var.get('default_value')
+                ))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'id': template_id, 'message': 'Template erfolgreich erstellt'})
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Templates: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates/<int:template_id>/generate', methods=['POST'])
+def generate_document(template_id):
+    try:
+        data = request.get_json()
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Template und Variablen abrufen
+        template_query = """
+        SELECT t.*, 
+               json_agg(jsonb_build_object(
+                   'name', tv.name,
+                   'required', tv.required,
+                   'default_value', tv.default_value
+               )) as variables
+        FROM templates t
+        LEFT JOIN template_variables tv ON t.id = tv.template_id
+        WHERE t.id = %s
+        GROUP BY t.id
+        """
+        
+        cur.execute(template_query, (template_id,))
+        template = cur.fetchone()
+        
+        if not template:
+            return jsonify({'error': 'Template nicht gefunden'}), 404
+        
+        # Variablen validieren
+        for var in template['variables']:
+            if var['required'] and var['name'] not in data.get('variables', {}):
+                return jsonify({'error': f"Erforderliche Variable fehlt: {var['name']}"}), 400
+        
+        # Dokument generieren
+        content = template['content']
+        variables = data.get('variables', {})
+        
+        for var_name, var_value in variables.items():
+            content = content.replace(f"{{{var_name}}}", str(var_value))
+        
+        # Dokument speichern
+        doc_query = """
+        INSERT INTO documents (template_id, content, created_by)
+        VALUES (%s, %s, %s)
+        RETURNING id
+        """
+        
+        cur.execute(doc_query, (template_id, content, data.get('created_by', 1)))
+        doc_id = cur.fetchone()['id']
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'id': doc_id,
+            'message': 'Dokument erfolgreich generiert'
+        })
+        
+    except Exception as e:
+        logger.error(f"Fehler bei der Dokumentgenerierung: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/extract-cv', methods=['POST', 'OPTIONS'])
+def extract_cv_with_ai():
+    if request.method == 'OPTIONS':
+        return '', 204
+        
+    try:
+        data = request.get_json()
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Kein Text zum Verarbeiten gefunden'}), 400
+
+        text = data['text']
+        logger.info("Starte KI-basierte CV-Extraktion")
+        
+        # Extrahiere grundlegende Informationen aus dem Text
+        extracted_data = analyze_cv_text(text)
+        
+        # Formatiere die Antwort
+        cv_data = {
+            'personalInfo': {
+                'name': '',  # Wird später durch KI ergänzt
+                'email': '',
+                'phone': ''
+            },
+            'skills': extracted_data['skills'],
+            'experience': extracted_data['experience'],
+            'education': extracted_data['education']
+        }
+        
+        logger.info("CV-Extraktion erfolgreich")
+        return jsonify(cv_data)
+
+    except Exception as e:
+        logger.error(f"Fehler bei der KI-CV-Extraktion: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/enhance-cv', methods=['POST', 'OPTIONS'])
+def enhance_cv_with_ai():
+    if request.method == 'OPTIONS':
+        return '', 204
+        
+    try:
+        data = request.get_json()
+        if not data or 'cv' not in data:
+            return jsonify({'error': 'Keine CV-Daten zum Verbessern gefunden'}), 400
+
+        cv_data = data['cv']
+        logger.info("Starte KI-basierte CV-Verbesserung")
+        
+        # Hier würde normalerweise die KI-Verbesserung stattfinden
+        # Für jetzt geben wir einfach die Daten zurück
+        enhanced_cv = cv_data
+        
+        logger.info("CV-Verbesserung erfolgreich")
+        return jsonify(enhanced_cv)
+
+    except Exception as e:
+        logger.error(f"Fehler bei der KI-CV-Verbesserung: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

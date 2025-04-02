@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "@types/axios": "^0.9.36",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "axios": "^1.8.4",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "openai": "^4.91.1",
+    "react-router-dom": "^7.4.1"
+  }
+}
