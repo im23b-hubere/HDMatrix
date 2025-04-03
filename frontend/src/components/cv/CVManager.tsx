@@ -26,6 +26,7 @@ import {
   ListItemText,
   ListItemButton,
   Link,
+  ListItemIcon,
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
@@ -39,6 +40,18 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   LocationOn as LocationOnIcon,
+  Person as PersonIcon,
+  Work as WorkIcon,
+  Build as BuildIcon,
+  School as SchoolIcon,
+  Verified as VerifiedIcon,
+  Translate as TranslateIcon,
+  MenuBook as MenuBookIcon,
+  Launch as LaunchIcon,
+  Edit as EditIcon,
+  Cake as CakeIcon,
+  Public as PublicIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { CV } from '../../types/cv';
 import { pdfService } from '../../services/pdf-service';
@@ -247,14 +260,14 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
 }) => {
   const [activeSection, setActiveSection] = useState('personal');
   const sections = [
-    { id: 'personal', label: 'Persönliche Daten' },
-    { id: 'summary', label: 'Zusammenfassung' },
-    { id: 'experience', label: 'Berufserfahrung' },
-    { id: 'skills', label: 'Skills & Technologien' },
-    { id: 'education', label: 'Ausbildung' },
-    { id: 'certifications', label: 'Zertifizierungen' },
-    { id: 'languages', label: 'Sprachen' },
-    { id: 'publications', label: 'Publikationen' }
+    { id: 'personal', label: 'Persönliche Daten', icon: <PersonIcon /> },
+    { id: 'summary', label: 'Zusammenfassung', icon: <DescriptionIcon /> },
+    { id: 'experience', label: 'Berufserfahrung', icon: <WorkIcon /> },
+    { id: 'skills', label: 'Skills & Technologien', icon: <BuildIcon /> },
+    { id: 'education', label: 'Ausbildung', icon: <SchoolIcon /> },
+    { id: 'certifications', label: 'Zertifizierungen', icon: <VerifiedIcon /> },
+    { id: 'languages', label: 'Sprachen', icon: <TranslateIcon /> },
+    { id: 'publications', label: 'Publikationen', icon: <MenuBookIcon /> }
   ];
 
   const renderSection = () => {
@@ -262,66 +275,164 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
       case 'personal':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Kontaktinformationen</Typography>
-            <Grid container spacing={2}>
-              {cv.personalInfo?.email && (
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <EmailIcon color="action" />
-                    <Typography>{cv.personalInfo.email}</Typography>
-                  </Box>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PersonIcon color="primary" />
+              Persönliche Informationen
+            </Typography>
+            <Paper sx={{ p: 3, mb: 3 }}>
+              <Grid container spacing={3}>
+                {cv.personalInfo?.email && (
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <EmailIcon color="action" />
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Email</Typography>
+                        <Typography>{cv.personalInfo.email}</Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                )}
+                {cv.personalInfo?.phone && (
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PhoneIcon color="action" />
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Telefon</Typography>
+                        <Typography>{cv.personalInfo.phone}</Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                )}
+                {cv.personalInfo?.location && (
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <LocationOnIcon color="action" />
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Standort</Typography>
+                        <Typography>{cv.personalInfo.location}</Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                )}
+                {cv.personalInfo?.birthYear && (
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CakeIcon color="action" />
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Geburtsjahr</Typography>
+                        <Typography>{cv.personalInfo.birthYear}</Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                )}
+                {cv.personalInfo?.nationality && (
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PublicIcon color="action" />
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Nationalität</Typography>
+                        <Typography>{cv.personalInfo.nationality}</Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </Paper>
+
+            {cv.personalInfo?.languages && cv.personalInfo.languages.length > 0 && (
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TranslateIcon color="primary" />
+                  Sprachkenntnisse
+                </Typography>
+                <Grid container spacing={2}>
+                  {cv.personalInfo.languages.map((lang, index) => (
+                    <Grid item xs={12} sm={6} md={4} key={index}>
+                      <Paper sx={{ p: 2 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                          {lang.language}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Niveau: {lang.level}
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  ))}
                 </Grid>
-              )}
-              {cv.personalInfo?.phone && (
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <PhoneIcon color="action" />
-                    <Typography>{cv.personalInfo.phone}</Typography>
-                  </Box>
-                </Grid>
-              )}
-              {cv.personalInfo?.location && (
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <LocationOnIcon color="action" />
-                    <Typography>{cv.personalInfo.location}</Typography>
-                  </Box>
-                </Grid>
-              )}
-            </Grid>
+              </Box>
+            )}
           </Box>
         );
       
       case 'summary':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Zusammenfassung</Typography>
-            <Typography variant="body1" paragraph>
-              {cv.personalInfo?.summary || 'Keine Zusammenfassung verfügbar.'}
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DescriptionIcon color="primary" />
+              Zusammenfassung
             </Typography>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>
+                {cv.personalInfo?.summary || 'Keine Zusammenfassung verfügbar.'}
+              </Typography>
+            </Paper>
           </Box>
         );
       
       case 'experience':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Berufserfahrung</Typography>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <WorkIcon color="primary" />
+              Berufserfahrung
+            </Typography>
             {cv.experience?.map((exp, index) => (
-              <Box key={index} sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-                  {exp.position} {exp.company && `bei ${exp.company}`}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {exp.start_year} - {exp.end_year}
-                  {exp.location && ` • ${exp.location}`}
-                </Typography>
-                <Typography variant="body1" paragraph>
+              <Paper key={index} sx={{ p: 3, mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 500 }}>
+                      {exp.position}
+                    </Typography>
+                    <Typography variant="subtitle1" color="primary">
+                      {exp.company}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                      {exp.start_year} - {exp.end_year}
+                    </Typography>
+                    {exp.location && (
+                      <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <LocationOnIcon fontSize="small" />
+                        {exp.location}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+                <Typography variant="body1" paragraph sx={{ whiteSpace: 'pre-line' }}>
                   {exp.description}
                 </Typography>
+                {exp.achievements && exp.achievements.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Wichtigste Erfolge:
+                    </Typography>
+                    <List dense>
+                      {exp.achievements.map((achievement, idx) => (
+                        <ListItem key={idx}>
+                          <ListItemIcon>
+                            <CheckCircleIcon color="primary" fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText primary={achievement} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
                 {exp.technologies && exp.technologies.length > 0 && (
-                  <Box sx={{ mt: 1 }}>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Verwendete Technologien:
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Eingesetzte Technologien:
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {exp.technologies.map((tech, idx) => (
@@ -330,12 +441,13 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
                           label={tech}
                           size="small"
                           variant="outlined"
+                          color="primary"
                         />
                       ))}
                     </Box>
                   </Box>
                 )}
-              </Box>
+              </Paper>
             ))}
           </Box>
         );
@@ -343,42 +455,84 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
       case 'skills':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Skills & Technologien</Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {cv.skills?.map((skill, index) => (
-                <Chip
-                  key={index}
-                  label={skill}
-                  sx={{
-                    bgcolor: 'background.default',
-                    '&:hover': { bgcolor: 'action.hover' }
-                  }}
-                />
-              ))}
-            </Box>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <BuildIcon color="primary" />
+              Skills & Technologien
+            </Typography>
+            <Paper sx={{ p: 3 }}>
+              <Grid container spacing={3}>
+                {cv.skills?.map((skill, index) => (
+                  <Grid item xs={12} sm={6} md={4} key={index}>
+                    <Paper 
+                      elevation={0} 
+                      sx={{ 
+                        p: 2, 
+                        bgcolor: 'background.default',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          bgcolor: 'primary.main'
+                        }}
+                      />
+                      <Typography>{skill}</Typography>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+            </Paper>
           </Box>
         );
       
       case 'education':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Ausbildung</Typography>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SchoolIcon color="primary" />
+              Ausbildung
+            </Typography>
             {cv.education?.map((edu, index) => (
-              <Box key={index} sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-                  {edu.degree}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {edu.institution && `${edu.institution} • `}
-                  {edu.start_year} - {edu.end_year}
-                  {edu.location && ` • ${edu.location}`}
-                </Typography>
+              <Paper key={index} sx={{ p: 3, mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 500 }}>
+                      {edu.degree}
+                    </Typography>
+                    {edu.institution && (
+                      <Typography variant="subtitle1" color="primary">
+                        {edu.institution}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                      {edu.start_year} - {edu.end_year}
+                    </Typography>
+                    {edu.location && (
+                      <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <LocationOnIcon fontSize="small" />
+                        {edu.location}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+                {edu.grade && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Abschlussnote: {edu.grade}
+                  </Typography>
+                )}
                 {edu.details && (
-                  <Typography variant="body1">
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>
                     {edu.details}
                   </Typography>
                 )}
-              </Box>
+              </Paper>
             ))}
           </Box>
         );
@@ -386,66 +540,83 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
       case 'certifications':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Zertifizierungen</Typography>
-            {cv.certifications?.map((cert, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-                  {cert.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {cert.issuer} • Ausgestellt: {cert.issueDate}
-                  {cert.expiryDate && ` • Gültig bis: ${cert.expiryDate}`}
-                </Typography>
-                {cert.credentialId && (
-                  <Typography variant="body2" color="text.secondary">
-                    Credential ID: {cert.credentialId}
-                  </Typography>
-                )}
-              </Box>
-            ))}
-          </Box>
-        );
-      
-      case 'languages':
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>Sprachen</Typography>
-            {cv.personalInfo?.languages?.map((lang, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Typography variant="subtitle1">
-                  {lang.language}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Niveau: {lang.level}
-                </Typography>
-              </Box>
-            ))}
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <VerifiedIcon color="primary" />
+              Zertifizierungen
+            </Typography>
+            <Grid container spacing={2}>
+              {cv.certifications?.map((cert, index) => (
+                <Grid item xs={12} sm={6} key={index}>
+                  <Paper sx={{ p: 3 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 500, mb: 1 }}>
+                      {cert.name}
+                    </Typography>
+                    <Typography variant="subtitle1" color="primary" gutterBottom>
+                      {cert.issuer}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 3, mt: 2 }}>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Ausgestellt</Typography>
+                        <Typography>{cert.issueDate}</Typography>
+                      </Box>
+                      {cert.expiryDate && (
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">Gültig bis</Typography>
+                          <Typography>{cert.expiryDate}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    {cert.credentialId && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Credential ID</Typography>
+                        <Typography>{cert.credentialId}</Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
           </Box>
         );
       
       case 'publications':
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Publikationen</Typography>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MenuBookIcon color="primary" />
+              Publikationen
+            </Typography>
             {cv.publications?.map((pub, index) => (
-              <Box key={index} sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+              <Paper key={index} sx={{ p: 3, mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 500 }}>
                   {pub.title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {pub.publisher} • {pub.date}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, my: 1 }}>
+                  <Typography variant="subtitle1" color="primary">
+                    {pub.publisher}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    • {pub.date}
+                  </Typography>
+                </Box>
                 {pub.description && (
-                  <Typography variant="body1" paragraph>
+                  <Typography variant="body1" paragraph sx={{ mt: 2 }}>
                     {pub.description}
                   </Typography>
                 )}
                 {pub.url && (
-                  <Link href={pub.url} target="_blank" rel="noopener noreferrer">
+                  <Button
+                    variant="outlined"
+                    startIcon={<LaunchIcon />}
+                    href={pub.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="small"
+                  >
                     Publikation ansehen
-                  </Link>
+                  </Button>
                 )}
-              </Box>
+              </Paper>
             ))}
           </Box>
         );
@@ -485,13 +656,28 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
               {cv.personalInfo?.firstName?.[0]}{cv.personalInfo?.lastName?.[0]}
             </Avatar>
           )}
-          <Box>
+          <Box sx={{ flex: 1 }}>
             <Typography variant="h4" gutterBottom>
               {cv.personalInfo?.firstName} {cv.personalInfo?.lastName}
             </Typography>
             <Typography variant="h6" color="text.secondary">
               {cv.personalInfo?.title}
             </Typography>
+          </Box>
+          <Box>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              sx={{ mr: 1 }}
+            >
+              PDF Export
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<EditIcon />}
+            >
+              Bearbeiten
+            </Button>
           </Box>
         </Box>
       </DialogTitle>
@@ -525,6 +711,12 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
                       }
                     }}
                   >
+                    <ListItemIcon sx={{ 
+                      minWidth: 36,
+                      color: activeSection === section.id ? 'inherit' : 'primary.main'
+                    }}>
+                      {section.icon}
+                    </ListItemIcon>
                     <ListItemText primary={section.label} />
                   </ListItemButton>
                 ))}
@@ -537,15 +729,6 @@ const CVDetails: React.FC<{ cv: CV; open: boolean; onClose: () => void }> = ({
           </Grid>
         </Grid>
       </DialogContent>
-
-      <DialogActions sx={{ px: 4, py: 2, borderTop: 1, borderColor: 'divider' }}>
-        <Button onClick={onClose} variant="outlined">
-          Schließen
-        </Button>
-        <Button variant="contained" startIcon={<DownloadIcon />}>
-          CV herunterladen
-        </Button>
-      </DialogActions>
     </Dialog>
   );
 };

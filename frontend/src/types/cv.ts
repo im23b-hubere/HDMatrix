@@ -98,23 +98,22 @@ export interface Publication {
 }
 
 export interface CV {
-  id?: string;
-  personalInfo?: PersonalInfo;
-  summary?: string;
-  skills?: string[];
-  experience?: Experience[];
-  education?: Education[];
+  id: number;
+  employeeId: number;
+  fullName: string;
+  position: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  photoUrl?: string;
+  summary: string;
+  skills: Skill[];
+  experience: WorkExperience[];
+  education: Education[];
   certifications?: Certification[];
-  publications?: Publication[];
-  lastUpdated?: Date;
-  languages?: string[];
-  projects?: Array<{
-    name: string;
-    description: string;
-    technologies: string[];
-    role?: string;
-    url?: string;
-  }>;
+  languages?: Language[];
+  projects: Project[];
+  lastUpdated: string;
 }
 
 export interface CVResponse {
@@ -271,4 +270,28 @@ export interface CVTemplate {
       size: string;
     };
   };
+}
+
+export interface Employee {
+  id: number;
+  fullName: string;
+  position: string;
+  email: string;
+  phone?: string;
+  department?: string;
+  location?: string;
+  photoUrl?: string;
+  hireDate?: string;
+}
+
+export interface Bid {
+  id: number;
+  name: string;
+  client: string;
+  description: string;
+  status: 'draft' | 'in_progress' | 'submitted' | 'won' | 'lost';
+  dueDate: string;
+  createdAt: string;
+  updatedAt: string;
+  teamMembers: { employeeId: number; role: string }[];
 } 

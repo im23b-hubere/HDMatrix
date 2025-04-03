@@ -1,5 +1,12 @@
 import mysql.connector
 from mysql.connector import Error
+import psycopg2
+import sys
+import locale
+
+# Diagnose-Informationen ausgeben
+print(f"System-Kodierung: {locale.getpreferredencoding()}")
+print(f"Python-Standardkodierung: {sys.getdefaultencoding()}")
 
 # Datenbankverbindung konfigurieren
 DB_CONFIG = {
@@ -8,6 +15,16 @@ DB_CONFIG = {
     'password': 'hello1234',
     'database': 'talentbridgedb',
     'port': 3306
+}
+
+# Verbindungsparameter
+db_params = {
+    'dbname': 'postgres',
+    'user': 'postgres',
+    'password': 'Steinadler17',  # Korrigiertes Passwort
+    'host': 'localhost',
+    'port': '5432',
+    'client_encoding': 'UTF8'
 }
 
 def test_python_search():
@@ -57,4 +74,35 @@ def test_python_search():
             print("\nDatenbankverbindung geschlossen.")
 
 if __name__ == "__main__":
-    test_python_search() 
+    test_python_search()
+
+# Versuche die Verbindung herzustellen
+try:
+    print("Versuche Verbindung herzustellen...")
+    conn = psycopg2.connect(**db_params)
+    
+    print("Verbindung erfolgreich hergestellt.")
+    
+    # Teste eine einfache Abfrage
+    cur = conn.cursor()
+    cur.execute("SELECT 1")
+    result = cur.fetchone()
+    print(f"Abfrageergebnis: {result}")
+    
+    cur.close()
+    conn.close()
+    print("Verbindung geschlossen.")
+    
+except Exception as e:
+    print(f"Fehlertyp: {type(e).__name__}")
+    print(f"Fehler: {e}")
+    
+    # Wenn es sich um ein UnicodeDecodeError handelt
+    if isinstance(e, UnicodeDecodeError):
+        if hasattr(e, 'object') and isinstance(e.object, bytes):
+            try:
+                # Versuche mit Windows-Kodierung zu decodieren
+                error_msg = e.object.decode('cp1252', errors='replace')
+                print(f"Fehlermeldung (cp1252): {error_msg}")
+            except Exception as decode_err:
+                print(f"Fehler bei Dekodierung: {decode_err}") 

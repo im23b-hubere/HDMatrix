@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { CV } from '../types/cv';
-import { aiService } from './ai-service';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -13,34 +12,40 @@ export const pdfService = {
     extractTextFromPDF: async (file: File): Promise<string> => {
         try {
             console.log('Starte PDF-Textextraktion für:', file.name);
-            console.log('API URL:', `${API_BASE_URL}/api/pdf/extract-text`);
+            
+            // Überprüfe Dateigröße (max 10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                throw new Error('Die PDF-Datei ist zu groß. Maximale Größe: 10MB');
+            }
             
             const formData = new FormData();
             formData.append('file', file);
 
-            // Log FormData contents safely
-            console.log('FormData Datei:', file.name, 'Größe:', file.size, 'Typ:', file.type);
-
-            const response = await axios.post(`${API_BASE_URL}/api/pdf/extract-text`, formData, {
+            const response = await axios.post(`${API_BASE_URL}/api/pdf/extract`, formData, {
                 headers: {
-                    'Content-Type': 'multipart/form-data',
-                    'Accept': 'application/json'
+                    'Content-Type': 'multipart/form-data'
                 },
-                withCredentials: true
+                timeout: 60000 // 60 Sekunden Timeout für PDF-Extraktion
             });
 
-            console.log('PDF-Text erfolgreich extrahiert:', response.data);
+            if (!response.data.text) {
+                throw new Error('Kein Text aus PDF extrahiert');
+            }
+
+            console.log('PDF-Text erfolgreich extrahiert');
             return response.data.text;
         } catch (error) {
             console.error('Fehler bei der PDF-Textextraktion:', error);
             if (axios.isAxiosError(error)) {
-                console.error('Response:', error.response?.data);
-                console.error('Status:', error.response?.status);
-                console.error('Request URL:', error.config?.url);
-                console.error('Request Method:', error.config?.method);
-                console.error('Request Headers:', error.config?.headers);
+                if (error.response?.status === 413) {
+                    throw new Error('Die PDF-Datei ist zu groß. Maximale Größe: 10MB');
+                }
+                if (error.code === 'ECONNABORTED') {
+                    throw new Error('Zeitüberschreitung bei der PDF-Extraktion');
+                }
+                throw new Error(error.response?.data?.error || 'Fehler beim Extrahieren des PDF-Texts');
             }
-            throw new Error('Fehler beim Extrahieren des PDF-Texts. Bitte versuchen Sie es erneut.');
+            throw error;
         }
     },
 
@@ -55,35 +60,69 @@ export const pdfService = {
             
             // 1. Text aus PDF extrahieren
             const pdfText = await pdfService.extractTextFromPDF(file);
-            console.log('Extrahierter Text (erste 100 Zeichen):', pdfText.substring(0, 100));
+            if (!pdfText) {
+                throw new Error('Kein Text aus PDF extrahiert');
+            }
 
-            // 2. Text an Backend zur KI-Verarbeitung senden
-            const response = await axios.post(`${API_BASE_URL}/api/ai/extract-cv`, {
-                text: pdfText
-            });
+            console.log('Text extrahiert, sende an KI...');
 
-            console.log('CV-Daten erfolgreich extrahiert:', response.data);
-            
-            // 3. CV-Daten verbessern
-            const enhancedResponse = await axios.post(`${API_BASE_URL}/api/ai/enhance-cv`, {
-                cv: response.data
-            });
+            // 2. Text an KI zur Verarbeitung senden
+            const response = await axios.post(`${API_BASE_URL}/api/ai/extract-cv`, 
+                { text: pdfText },
+                { 
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 300000 // 5 Minuten Timeout für KI-Verarbeitung
+                }
+            );
 
-            console.log('CV-Daten erfolgreich verbessert:', enhancedResponse.data);
+            if (!response.data) {
+                throw new Error('Keine Daten von der KI erhalten');
+            }
 
-            return {
-                ...enhancedResponse.data,
+            console.log('CV-Daten erfolgreich extrahiert');
+
+            // 3. CV-Objekt erstellen und validieren
+            const cv: CV = {
+                ...response.data,
                 id: Date.now().toString(),
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             };
+
+            // Validiere die extrahierten Daten
+            if (!cv.personalInfo) {
+                throw new Error('Keine persönlichen Informationen gefunden');
+            }
+
+            // Stelle sicher, dass alle erforderlichen Felder vorhanden sind
+            const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'location', 'summary'];
+            for (const field of requiredFields) {
+                if (!(field in cv.personalInfo)) {
+                    (cv.personalInfo as any)[field] = '';
+                }
+            }
+
+            // Stelle sicher, dass alle Arrays vorhanden sind
+            const arrayFields = ['skills', 'experience', 'education', 'languages', 'certifications', 'projects'];
+            for (const field of arrayFields) {
+                if (!Array.isArray((cv as any)[field])) {
+                    (cv as any)[field] = [];
+                }
+            }
+
+            return cv;
         } catch (error) {
             console.error('Fehler bei der PDF-Verarbeitung:', error);
             if (axios.isAxiosError(error)) {
-                console.error('Response:', error.response?.data);
-                console.error('Status:', error.response?.status);
+                if (error.code === 'ECONNABORTED') {
+                    throw new Error('Zeitüberschreitung bei der Verarbeitung. Bitte versuchen Sie es erneut.');
+                }
+                if (error.response?.status === 503) {
+                    throw new Error('KI-Service ist nicht verfügbar. Bitte starten Sie Ollama.');
+                }
+                throw new Error(error.response?.data?.error || 'Fehler bei der Verarbeitung des Lebenslaufs');
             }
-            throw new Error('Fehler bei der Verarbeitung des Lebenslaufs. Bitte versuchen Sie es erneut.');
+            throw error;
         }
     },
 
@@ -93,13 +132,27 @@ export const pdfService = {
      * @returns Array von CV-Objekten
      */
     importMultiplePDFs: async (files: File[]): Promise<CV[]> => {
-        try {
-            console.log('Starte Multi-PDF-Import für', files.length, 'Dateien');
-            const cvPromises = files.map(file => pdfService.extractFromPDF(file));
-            return await Promise.all(cvPromises);
-        } catch (error) {
-            console.error('Fehler beim PDF-Import:', error);
-            throw error;
+        const results: CV[] = [];
+        const errors: string[] = [];
+
+        for (const file of files) {
+            try {
+                const cv = await pdfService.extractFromPDF(file);
+                results.push(cv);
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
+                errors.push(`Fehler bei ${file.name}: ${errorMessage}`);
+                console.error(`Fehler bei der Verarbeitung von ${file.name}:`, error);
+            }
         }
+
+        if (errors.length > 0) {
+            console.error('Fehler beim Import einiger PDFs:', errors);
+            if (results.length === 0) {
+                throw new Error('Keine PDFs konnten importiert werden');
+            }
+        }
+
+        return results;
     },
 }; 
