@@ -18,6 +18,7 @@ import {
   Notifications as NotificationsIcon,
   AccountCircle as AccountCircleIcon,
   ChevronLeft as ChevronLeftIcon,
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useTheme, alpha } from '@mui/material/styles';
 
@@ -70,6 +71,11 @@ const Navbar: React.FC<NavbarProps> = ({
       text: 'Lebensläufe',
       icon: <DescriptionIcon />,
       path: '/cvs',
+    },
+    {
+      text: 'CV hochladen',
+      icon: <CloudUploadIcon />,
+      path: '/cv/upload',
     },
     {
       text: 'Mitarbeiter & Teams',

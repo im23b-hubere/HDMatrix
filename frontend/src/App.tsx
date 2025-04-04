@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -24,9 +24,35 @@ import NotFoundPage from './pages/NotFoundPage';
 import SettingsPage from './pages/SettingsPage';
 import EmployeesPage from './pages/EmployeesPage';
 import SearchPage from './pages/SearchPage';
+import CVUploadPage from './pages/CVUploadPage';
 
 function App() {
-  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
+    localStorage.getItem('isLoggedIn') === 'true'
+  );
+
+  // Lausche auf Änderungen im localStorage
+  useEffect(() => {
+    const checkLoginStatus = () => {
+      const loginStatus = localStorage.getItem('isLoggedIn') === 'true';
+      setIsAuthenticated(loginStatus);
+      console.log('Login-Status geprüft:', loginStatus);
+    };
+
+    // Initial prüfen
+    checkLoginStatus();
+    
+    // Window storage event listener für externe Änderungen
+    window.addEventListener('storage', checkLoginStatus);
+    
+    // Custom event für lokale Änderungen
+    window.addEventListener('loginStatusChanged', checkLoginStatus);
+    
+    return () => {
+      window.removeEventListener('storage', checkLoginStatus);
+      window.removeEventListener('loginStatusChanged', checkLoginStatus);
+    };
+  }, []);
 
   return (
     <ThemeProvider theme={theme}>
@@ -38,19 +64,20 @@ function App() {
             <Route element={<MinimalLayout />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-              <Route path="*" element={isLoggedIn ? <NotFoundPage /> : <Navigate to="/login" />} />
+              <Route path="*" element={isAuthenticated ? <NotFoundPage /> : <Navigate to="/login" />} />
             </Route>
 
             {/* Protected routes */}
             <Route element={<MainLayout />}>
-              <Route path="/" element={isLoggedIn ? <Dashboard /> : <Navigate to="/login" />} />
-              <Route path="/dashboard" element={isLoggedIn ? <Dashboard /> : <Navigate to="/login" />} />
-              <Route path="/cvs/:id" element={isLoggedIn ? <CVDetailPage /> : <Navigate to="/login" />} />
-              <Route path="/cvs/edit/:id" element={isLoggedIn ? <CVEditPage /> : <Navigate to="/login" />} />
-              <Route path="/cvs/new" element={isLoggedIn ? <CVEditPage /> : <Navigate to="/login" />} />
-              <Route path="/employees" element={isLoggedIn ? <EmployeesPage /> : <Navigate to="/login" />} />
-              <Route path="/settings" element={isLoggedIn ? <SettingsPage /> : <Navigate to="/login" />} />
-              <Route path="/search" element={isLoggedIn ? <SearchPage /> : <Navigate to="/login" />} />
+              <Route path="/" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} />
+              <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} />
+              <Route path="/cvs/:id" element={isAuthenticated ? <CVDetailPage /> : <Navigate to="/login" />} />
+              <Route path="/cvs/edit/:id" element={isAuthenticated ? <CVEditPage /> : <Navigate to="/login" />} />
+              <Route path="/cvs/new" element={isAuthenticated ? <CVEditPage /> : <Navigate to="/login" />} />
+              <Route path="/employees" element={isAuthenticated ? <EmployeesPage /> : <Navigate to="/login" />} />
+              <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/login" />} />
+              <Route path="/search" element={isAuthenticated ? <SearchPage /> : <Navigate to="/login" />} />
+              <Route path="/cv/upload" element={isAuthenticated ? <CVUploadPage /> : <Navigate to="/login" />} />
             </Route>
           </Routes>
         </Router>

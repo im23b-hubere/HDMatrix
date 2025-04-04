@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Container, Grid, Paper, Typography, Box, Button, 
+  Container, Paper, Typography, Box, Button, 
   Card, CardContent, CardHeader, Avatar, IconButton, 
   Divider, List, ListItem, ListItemText, ListItemAvatar,
   ListItemSecondaryAction, Chip, CircularProgress,
-  LinearProgress
+  LinearProgress,
+  Grid
 } from '@mui/material';
 import { 
   Refresh as RefreshIcon,
@@ -62,22 +63,41 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const cvs = await cvService.getAllCVs();
-        setRecentCVs(cvs.slice(0, 5)); // Nur die neuesten 5 anzeigen
+        console.log('Dashboard: Starte Datenabruf...');
+        setLoading(true);
         
-        // In einer echten Anwendung würden hier auch die Statistiken geladen
+        // Versuche, Daten von der API zu holen
+        let cvData = [];
+        try {
+          console.log('Dashboard: Versuche CV-Daten abzurufen');
+          cvData = await cvService.getAllCVs();
+          console.log('Dashboard: CV-Daten erfolgreich abgerufen:', cvData);
+        } catch (apiError) {
+          console.error('Dashboard: API-Fehler beim Abrufen der CVs:', apiError);
+          console.log('Dashboard: Verwende Mock-Daten');
+          // Wenn die API fehlschlägt, verwenden wir die Mock-Daten direkt
+          cvData = cvService.getMockCVs();
+        }
+        
+        // Setze die CVs
+        setRecentCVs(cvData.slice(0, 5)); // Nur die neuesten 5 anzeigen
+        
+        // Aktualisiere die Statistiken basierend auf den geladenen CVs
         setStats(prevStats => ({
           ...prevStats,
-          totalCVs: cvs.length,
-          totalEmployees: cvs.length, // Annahme: 1 CV pro Mitarbeiter
+          totalCVs: cvData.length,
+          totalEmployees: cvData.length, // Annahme: 1 CV pro Mitarbeiter
           activeProjects: Math.floor(Math.random() * 15) + 5, // Zufällige Anzahl für Demo-Zwecke
           pendingCVs: Math.floor(Math.random() * 10) // Zufällige Anzahl für Demo-Zwecke
         }));
         
-        setLoading(false);
       } catch (error) {
-        console.error('Fehler beim Laden der Dashboard-Daten:', error);
+        console.error('Dashboard: Allgemeiner Fehler beim Laden der Dashboard-Daten:', error);
+        // Stelle sicher, dass wir mindestens einige Daten anzeigen können
+        setRecentCVs(cvService.getMockCVs().slice(0, 5));
+      } finally {
         setLoading(false);
+        console.log('Dashboard: Datenabruf abgeschlossen');
       }
     };
     
@@ -498,57 +518,39 @@ const Dashboard: React.FC = () => {
               
               <List sx={{ width: '100%' }}>
                 {recentCVs.map((cv) => (
-                  <ListItem 
+                  <ListItem
                     key={cv.id}
+                    alignItems="flex-start"
+                    onClick={() => navigate(`/cvs/${cv.id}`)}
                     sx={{ 
-                      px: 0, 
-                      py: 1.5,
-                      transition: 'background-color 0.2s',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.3s',
                       '&:hover': {
-                        backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                        borderRadius: 1,
+                        backgroundColor: 'rgba(0, 0, 0, 0.04)'
                       }
                     }}
                   >
                     <ListItemAvatar>
-                      <Avatar 
-                        alt={(cv.personalInfo?.fullName || cv.fullName) || ''}
-                        src={(cv.personalInfo?.photoUrl || cv.photoUrl) || ''}
-                        sx={{ 
-                          width: 48, 
-                          height: 48,
-                          border: `2px solid ${alpha(theme.palette.primary.main, 0.2)}`
-                        }}
-                      >
-                        {(cv.personalInfo?.fullName || cv.fullName)?.charAt(0)}
-                      </Avatar>
+                      <Avatar alt={cv.fullName} src={cv.photoUrl} />
                     </ListItemAvatar>
                     <ListItemText
-                      primary={cv.personalInfo?.fullName || cv.fullName}
+                      primary={cv.fullName}
                       secondary={
-                        <React.Fragment>
-                          <Typography
-                            sx={{ display: 'inline' }}
-                            component="span"
-                            variant="body2"
-                            color="text.primary"
-                          >
-                            {cv.personalInfo?.position || cv.position}
+                        <>
+                          <Typography variant="body2" component="span" color="text.primary">
+                            {cv.position}
                           </Typography>
-                          {' — '}
-                          {cv.personalInfo?.location || cv.location}
-                        </React.Fragment>
+                          {' · '}
+                          <Typography variant="body2" component="span" color="text.secondary">
+                            {cv.email} · {cv.location}
+                          </Typography>
+                        </>
                       }
                     />
                     <ListItemSecondaryAction>
-                      <Button 
-                        size="small" 
-                        variant="outlined"
-                        onClick={() => navigate(`/cvs/${cv.id}`)}
-                        sx={{ borderRadius: 8 }}
-                      >
-                        Ansehen
-                      </Button>
+                      <IconButton edge="end" aria-label="details">
+                        <MoreVertIcon />
+                      </IconButton>
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}

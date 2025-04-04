@@ -172,7 +172,7 @@ const EmployeesPage: React.FC = () => {
 
       {/* Statistikkarten */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card 
             sx={{ 
               borderRadius: 2,
@@ -214,7 +214,7 @@ const EmployeesPage: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card 
             sx={{ 
               borderRadius: 2,
@@ -256,7 +256,7 @@ const EmployeesPage: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card 
             sx={{ 
               borderRadius: 2,

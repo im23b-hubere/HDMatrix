@@ -17,6 +17,10 @@ import time
 from ollama_extraction import OllamaExtractor
 from services.cv_extraction import CVExtractor
 from dotenv import load_dotenv
+from db.db_service import get_db_connection, create_tables, create_default_tenant, create_default_admin_user
+from routes.auth_routes import auth_routes
+from routes.workflow_routes import workflow_bp
+from routes.cv_routes import cv_upload_bp
 
 # Lade Umgebungsvariablen
 load_dotenv()
@@ -41,8 +45,28 @@ except ImportError as e:
     logger.warning(f"CV-Blueprint konnte nicht importiert werden: {str(e)}")
     cv_bp = None
 
+# Import Auth Routes
+try:
+    from routes.auth_routes import auth_routes
+    logger.info("Auth-Modul erfolgreich importiert")
+except ImportError as e:
+    logger.warning(f"Auth-Blueprint konnte nicht importiert werden: {str(e)}")
+    auth_routes = None
+
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# Konfiguriere CORS mit erweiterten Optionen
+CORS(app, resources={r"/api/*": {
+    "origins": ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "X-Custom-Header", "*"],
+    "supports_credentials": True,
+    "max_age": 86400
+}})
+
+# Verbesserte OPTIONS-Handhabung für alle Routen
+@app.route('/api/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    return '', 204  # 204 No Content für OPTIONS-Anfragen
 
 # Registriere Workflow Blueprint, wenn verfügbar
 if workflow_bp:
@@ -55,8 +79,89 @@ else:
 if cv_bp:
     app.register_blueprint(cv_bp)
     logger.info("CV-Modul erfolgreich registriert")
+    
+    # Füge Debug-Route hinzu
+    @app.route('/api/debug/cv', methods=['GET'])
+    def debug_cv():
+        """Debug-Endpoint für CV-Tabellen und Verbindung"""
+        try:
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({"success": False, "error": "Keine Datenbankverbindung"}), 500
+            
+            cursor = conn.cursor()
+            
+            # Prüfe, ob die CV-Tabellen existieren
+            try:
+                cursor.execute("SELECT COUNT(*) FROM cvs")
+                cv_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM employees")
+                employee_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM skills")
+                skill_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM skill_categories")
+                category_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM cv_skills")
+                cv_skills_count = cursor.fetchone()[0]
+                
+                return jsonify({
+                    "success": True,
+                    "tables": {
+                        "cvs": cv_count,
+                        "employees": employee_count,
+                        "skills": skill_count,
+                        "skill_categories": category_count,
+                        "cv_skills": cv_skills_count
+                    },
+                    "connection": "ok"
+                })
+            except Exception as e:
+                return jsonify({
+                    "success": False, 
+                    "error": f"Fehler beim Abfragen der Tabellen: {str(e)}",
+                    "connection": "ok"
+                }), 500
+            
+        except Exception as e:
+            return jsonify({
+                "success": False, 
+                "error": f"Serverfehler: {str(e)}"
+            }), 500
+
+# Registriere Auth Blueprint, wenn verfügbar
+if auth_routes:
+    app.register_blueprint(auth_routes, url_prefix='/api/auth')
+    logger.info("Auth-Modul erfolgreich registriert")
 else:
-    logger.warning("CV-Modul wurde nicht registriert - Blueprint nicht verfügbar")
+    logger.warning("Auth-Modul wurde nicht registriert - Blueprint nicht verfügbar")
+
+# Registriere CV-Upload Blueprint
+if cv_upload_bp:
+    app.register_blueprint(cv_upload_bp)
+    logger.info("CV-Upload-Modul erfolgreich registriert")
+else:
+    logger.warning("CV-Upload-Modul wurde nicht registriert - Blueprint nicht verfügbar")
+
+# DB und andere Einstellungen initialisieren
+try:
+    from db.db_service import create_tables, create_default_tenant, create_default_admin_user
+    
+    # Tabellen erstellen oder aktualisieren
+    logger.info("Initialisiere Datenbank...")
+    tables_result = create_tables()
+    
+    if tables_result["success"]:
+        logger.info(f"Datenbanktabellen wurden initialisiert: {tables_result.get('message')}")
+    else:
+        logger.error(f"Fehler bei der Tabellenerstellung: {tables_result.get('error', 'Unbekannter Fehler')}")
+except ImportError as e:
+    logger.warning(f"DB-Service konnte nicht geladen werden: {str(e)}")
+except Exception as e:
+    logger.error(f"Fehler bei der DB-Initialisierung: {str(e)}")
 
 # Konfiguration
 UPLOAD_FOLDER = 'temp'
@@ -1180,6 +1285,119 @@ def test_db_connection():
         
         logger.error(f"Fehler beim Testen der Datenbankverbindung: {error_msg}")
         return False
+
+# Debug-Endpunkt für Datenbankstatus
+@app.route('/api/debug/db-status')
+def db_status():
+    try:
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT version();")
+            version = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "status": "connected", 
+                "version": version
+            })
+        else:
+            return jsonify({"status": "error", "message": "Keine Verbindung zur Datenbank möglich"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/auth/direct-login', methods=['POST', 'OPTIONS'])
+def direct_login():
+    """
+    Direkter Login-Endpunkt ohne Blueprint für Testzwecke
+    """
+    print(f"Direkter Login-Endpunkt aufgerufen mit Methode: {request.method}")
+    
+    if request.method == 'OPTIONS':
+        response_headers = {
+            'Access-Control-Allow-Origin': 'http://localhost:3000',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Max-Age': '86400'
+        }
+        return '', 204, response_headers
+    
+    try:
+        data = request.get_json()
+        print(f"Direkter Login-Anfrage erhalten: {data}")
+        
+        email = data.get('email', '')
+        password = data.get('password', '')
+        
+        # Für Testzwecke
+        if email == 'admin@example.com' and password == 'admin123':
+            return jsonify({
+                'success': True,
+                'token': 'test_token_12345',
+                'user': {
+                    'id': 1,
+                    'email': 'admin@example.com',
+                    'role': 'admin',
+                    'tenant_id': 1
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Ungültige E-Mail oder Passwort'
+            }), 401
+    
+    except Exception as e:
+        print(f"Direkter Login-Fehler: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Server-Fehler: {str(e)}'
+        }), 500
+
+# Hilfs-Endpunkt zum Testen von POST-Anfragen
+@app.route('/api/test-post-endpoint', methods=['POST', 'GET', 'OPTIONS'])
+def test_post_endpoint():
+    """
+    Ein einfacher Endpunkt zum Testen von POST-Anfragen
+    """
+    print(f"Test-POST-Endpunkt aufgerufen mit Methode: {request.method}")
+    
+    if request.method == 'OPTIONS':
+        response_headers = {
+            'Access-Control-Allow-Origin': 'http://localhost:3000',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Max-Age': '86400'
+        }
+        return '', 204, response_headers
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        print(f"POST-Daten empfangen: {data}")
+        return jsonify({
+            "success": True,
+            "message": "POST-Anfrage erfolgreich verarbeitet",
+            "received_data": data
+        }), 200
+    
+    # GET-Anfrage
+    return jsonify({
+        "success": True,
+        "message": "GET-Anfrage erfolgreich verarbeitet"
+    }), 200
+
+# Debug-Endpunkte für Frontend
+@app.route('/api/debug/health', methods=['GET', 'OPTIONS'])
+def debug_health():
+    """Health-Check-Endpoint für Frontend-API-Tests"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    return jsonify({
+        "status": "ok",
+        "message": "API ist erreichbar",
+        "timestamp": datetime.now().isoformat()
+    })
 
 if __name__ == '__main__':
     # Setze die Standardkodierung für alle Strings

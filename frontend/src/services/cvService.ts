@@ -6,11 +6,15 @@ const API_URL = 'http://localhost:5000/api/cv';
 // CV Services
 export const getAllCVs = async (): Promise<CV[]> => {
   try {
-    const response = await axios.get(`${API_URL}/cvs`);
+    console.log('Versuche, CVs von der API abzurufen');
+    const response = await axios.get(`${API_URL}`);
+    console.log('API-Antwort erhalten:', response.data);
     return response.data;
   } catch (error) {
-    console.error('Error fetching CVs:', error);
-    throw error;
+    console.error('Fehler beim Abrufen der CVs von der API:', error);
+    console.log('Verwende Mock-Daten stattdessen');
+    // Wenn die API fehlschlägt, verwenden wir die Mock-Daten
+    return getMockCVs();
   }
 };
 
@@ -464,7 +468,7 @@ const searchCVsBySkills = async (skillIds: string[], teamSize: number = 1, minEx
       score += matchingSkills.length * 10;
       
       // 2. Skill-Level der übereinstimmenden Skills
-      const averageSkillLevel = matchingSkills.reduce((sum, skill) => sum + skill.level, 0) / 
+      const averageSkillLevel = matchingSkills.reduce((sum, skill) => sum + (skill.level || 0), 0) / 
         (matchingSkills.length || 1);
       score += averageSkillLevel * 5;
       

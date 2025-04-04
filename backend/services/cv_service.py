@@ -3,233 +3,290 @@ import uuid
 import json
 from datetime import datetime
 from werkzeug.utils import secure_filename
+import logging
+from typing import Dict, List, Any, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 class CVService:
     def __init__(self, db):
         self.db = db
+        self.cursor = self.db.cursor()
 
-    def get_all_cvs(self, tenant_id=None):
-        """Gibt alle Lebensläufe zurück, optional gefiltert nach Mandanten-ID"""
-        query = """
-            SELECT 
-                c.id, 
-                c.employee_id, 
-                e.full_name, 
-                e.position, 
-                e.email, 
-                e.phone, 
-                e.location, 
-                e.photo_url, 
-                c.summary, 
-                c.last_updated
-            FROM cvs c
-            JOIN employees e ON c.employee_id = e.id
-            WHERE c.is_active = true
+    def get_all_cvs(self, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
+        Hole alle CVs aus der Datenbank
         
-        params = []
-        if tenant_id:
-            query += " AND e.tenant_id = %s"
-            params.append(tenant_id)
+        Args:
+            tenant_id: Optionale tenant_id für Multi-Tenant-Unterstützung
             
-        query += " ORDER BY e.full_name"
+        Returns:
+            List: Liste von CV-Datensätzen
+        """
+        try:
+            if tenant_id:
+                query = """
+                SELECT cv.id, cv.employee_id, cv.created_at, cv.updated_at, 
+                       cv.summary, cv.personal_data, cv.education, cv.work_experience, cv.projects, cv.certifications, cv.languages,
+                       e.first_name, e.last_name, e.position, e.address, e.email, e.phone
+                FROM cvs cv
+                JOIN employees e ON cv.employee_id = e.id
+                WHERE cv.tenant_id = %s
+                ORDER BY cv.updated_at DESC
+                """
+                self.cursor.execute(query, (tenant_id,))
+            else:
+                query = """
+                SELECT cv.id, cv.employee_id, cv.created_at, cv.updated_at, 
+                       cv.summary, cv.personal_data, cv.education, cv.work_experience, cv.projects, cv.certifications, cv.languages,
+                       e.first_name, e.last_name, e.position, e.address, e.email, e.phone
+                FROM cvs cv
+                JOIN employees e ON cv.employee_id = e.id
+                ORDER BY cv.updated_at DESC
+                """
+                self.cursor.execute(query)
+            
+            cvs = []
+            for row in self.cursor.fetchall():
+                # Verarbeite die verschiedenen JSON-Felder
+                personal_data = row[5] if isinstance(row[5], dict) else json.loads(row[5]) if row[5] else {}
+                education_data = row[6] if isinstance(row[6], list) else json.loads(row[6]) if row[6] else []
+                work_experience = row[7] if isinstance(row[7], list) else json.loads(row[7]) if row[7] else []
+                projects = row[8] if isinstance(row[8], list) else json.loads(row[8]) if row[8] else []
+                certifications = row[9] if isinstance(row[9], list) else json.loads(row[9]) if row[9] else []
+                languages = row[10] if isinstance(row[10], list) else json.loads(row[10]) if row[10] else []
+                
+                full_name = f"{row[11]} {row[12]}" if row[11] and row[12] else ""
+                
+                cv = {
+                    "id": row[0],
+                    "employee_id": row[1],
+                    "created_at": row[2].isoformat() if row[2] else None,
+                    "updated_at": row[3].isoformat() if row[3] else None,
+                    "full_name": full_name,
+                    "position": row[13],
+                    "location": row[14],  # address
+                    "email": row[15],
+                    "phone": row[16],
+                    "photo_url": "",  # Nicht in der Abfrage enthalten
+                    "summary": row[4] or "",
+                    "personal_data": personal_data,
+                    "education": education_data,
+                    "experience": work_experience,
+                    "projects": projects,
+                    "certifications": certifications,
+                    "languages": languages,
+                }
+                cvs.append(cv)
+                
+            return cvs
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen der CVs: {str(e)}")
+            return []
+    
+    def get_cv_by_id(self, cv_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Hole einen CV anhand seiner ID
         
-        result = self.db.execute(query, params).fetchall()
-        
-        cvs = []
-        for row in result:
+        Args:
+            cv_id: ID des CV
+            tenant_id: Optionale tenant_id für Multi-Tenant-Unterstützung
+            
+        Returns:
+            Dict: CV-Datensatz oder None wenn nicht gefunden
+        """
+        try:
+            if tenant_id:
+                query = """
+                SELECT cv.id, cv.employee_id, cv.created_at, cv.updated_at, 
+                       cv.summary, cv.personal_data, cv.education, cv.work_experience, cv.projects, cv.certifications, cv.languages,
+                       e.first_name, e.last_name, e.position, e.address, e.email, e.phone
+                FROM cvs cv
+                JOIN employees e ON cv.employee_id = e.id
+                WHERE cv.id = %s AND cv.tenant_id = %s
+                """
+                self.cursor.execute(query, (cv_id, tenant_id))
+            else:
+                query = """
+                SELECT cv.id, cv.employee_id, cv.created_at, cv.updated_at, 
+                       cv.summary, cv.personal_data, cv.education, cv.work_experience, cv.projects, cv.certifications, cv.languages,
+                       e.first_name, e.last_name, e.position, e.address, e.email, e.phone
+                FROM cvs cv
+                JOIN employees e ON cv.employee_id = e.id
+                WHERE cv.id = %s
+                """
+                self.cursor.execute(query, (cv_id,))
+            
+            row = self.cursor.fetchone()
+            if not row:
+                return None
+            
+            # Verarbeite die verschiedenen JSON-Felder
+            personal_data = row[5] if isinstance(row[5], dict) else json.loads(row[5]) if row[5] else {}
+            education_data = row[6] if isinstance(row[6], list) else json.loads(row[6]) if row[6] else []
+            work_experience = row[7] if isinstance(row[7], list) else json.loads(row[7]) if row[7] else []
+            projects = row[8] if isinstance(row[8], list) else json.loads(row[8]) if row[8] else []
+            certifications = row[9] if isinstance(row[9], list) else json.loads(row[9]) if row[9] else []
+            languages = row[10] if isinstance(row[10], list) else json.loads(row[10]) if row[10] else []
+            
+            full_name = f"{row[11]} {row[12]}" if row[11] and row[12] else ""
+            
             cv = {
                 "id": row[0],
-                "employeeId": row[1],
-                "fullName": row[2],
-                "position": row[3],
-                "email": row[4],
-                "phone": row[5],
-                "location": row[6],
-                "photoUrl": row[7],
-                "summary": row[8],
-                "lastUpdated": row[9].isoformat() if row[9] else None,
-                "skills": self.get_cv_skills(row[0]),
-                "experience": [],
-                "education": [],
-                "certifications": [],
-                "projects": []
+                "employee_id": row[1],
+                "created_at": row[2].isoformat() if row[2] else None,
+                "updated_at": row[3].isoformat() if row[3] else None,
+                "full_name": full_name,
+                "position": row[13],
+                "location": row[14],  # address
+                "email": row[15],
+                "phone": row[16],
+                "photo_url": "",  # Nicht in der Abfrage enthalten
+                "summary": row[4] or "",
+                "personal_data": personal_data,
+                "education": education_data,
+                "experience": work_experience,
+                "projects": projects,
+                "certifications": certifications,
+                "languages": languages,
             }
-            
-            # Für die Übersichtsseite sind nicht alle Details erforderlich
-            # Wir zählen nur die Anzahl der Einträge für eine schnellere Abfrage
-            cv["experienceCount"] = self.count_experience(row[0])
-            cv["educationCount"] = self.count_education(row[0])
-            cv["projectCount"] = self.count_projects(row[0])
-            
-            cvs.append(cv)
-            
-        return cvs
+            return cv
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen des CV mit ID {cv_id}: {str(e)}")
+            return None
     
-    def get_cv_by_id(self, cv_id, tenant_id=None):
-        """Gibt einen Lebenslauf anhand seiner ID zurück, optional mit Mandanten-Filterung"""
-        query = """
-            SELECT 
-                c.id, 
-                c.employee_id, 
-                e.full_name, 
-                e.position, 
-                e.email, 
-                e.phone, 
-                e.location, 
-                e.photo_url, 
-                c.summary, 
-                c.last_updated
-            FROM cvs c
-            JOIN employees e ON c.employee_id = e.id
-            WHERE c.id = %s AND c.is_active = true
+    def create_employee(self, employee_data: Dict[str, Any]) -> Optional[str]:
         """
+        Erstelle einen neuen Mitarbeiter
         
-        params = [cv_id]
-        if tenant_id:
-            query += " AND e.tenant_id = %s"
-            params.append(tenant_id)
+        Args:
+            employee_data: Daten des Mitarbeiters 
             
-        result = self.db.execute(query, params).fetchone()
-        
-        if not result:
-            return None
+        Returns:
+            str: ID des erstellten Mitarbeiters oder None bei Fehler
+        """
+        try:
+            employee_id = str(uuid.uuid4())
+            now = datetime.now()
             
-        cv = {
-            "id": result[0],
-            "employeeId": result[1],
-            "fullName": result[2],
-            "position": result[3],
-            "email": result[4],
-            "phone": result[5],
-            "location": result[6],
-            "photoUrl": result[7],
-            "summary": result[8],
-            "lastUpdated": result[9].isoformat() if result[9] else None,
-            "skills": self.get_cv_skills(result[0]),
-            "experience": self.get_cv_experience(result[0]),
-            "education": self.get_cv_education(result[0]),
-            "certifications": self.get_cv_certifications(result[0]),
-            "projects": self.get_cv_projects(result[0])
-        }
-        
-        return cv
-    
-    def create_cv(self, employee_id, data, tenant_id=None):
-        """Erstellt einen neuen Lebenslauf"""
-        # Zuerst überprüfen, ob der Mitarbeiter zum Mandanten gehört
-        if tenant_id:
-            employee = self.db.execute(
-                "SELECT id FROM employees WHERE id = %s AND tenant_id = %s",
-                (employee_id, tenant_id)
-            ).fetchone()
+            # Standardwerte für nicht vorhandene Felder
+            full_name = employee_data.get("full_name", "")
             
-            if not employee:
-                return None
-        
-        # Prüfen, ob bereits ein CV für diesen Mitarbeiter existiert
-        existing_cv = self.db.execute(
-            "SELECT id FROM cvs WHERE employee_id = %s AND is_active = true",
-            (employee_id,)
-        ).fetchone()
-        
-        if existing_cv:
-            # Wenn bereits ein CV existiert, dieses als inaktiv markieren
-            self.db.execute(
-                "UPDATE cvs SET is_active = false WHERE id = %s",
-                (existing_cv[0],)
+            # Name aufteilen in Vor- und Nachname
+            name_parts = full_name.split(" ", 1)
+            first_name = name_parts[0] if len(name_parts) > 0 else ""
+            last_name = name_parts[1] if len(name_parts) > 1 else ""
+            
+            email = employee_data.get("email", "")
+            phone = employee_data.get("phone", "")
+            position = employee_data.get("position", "")
+            address = employee_data.get("location", "")
+            tenant_id = employee_data.get("tenant_id")
+            
+            query = """
+            INSERT INTO employees 
+            (id, first_name, last_name, email, phone, position, address, created_at, updated_at, tenant_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            self.cursor.execute(
+                query, 
+                (employee_id, first_name, last_name, email, phone, position, address, now, now, tenant_id)
             )
-        
-        # Neuen CV erstellen
-        cv_id = self.db.execute(
-            """
-            INSERT INTO cvs (employee_id, summary, last_updated, is_active, created_by)
-            VALUES (%s, %s, NOW(), true, %s)
-            RETURNING id
-            """,
-            (employee_id, data.get('summary', ''), data.get('createdBy', None))
-        ).fetchone()[0]
-        
-        # Skills, Erfahrungen usw. hinzufügen
-        if 'skills' in data and isinstance(data['skills'], list):
-            for skill in data['skills']:
-                self.add_skill_to_cv(cv_id, skill)
-                
-        if 'experience' in data and isinstance(data['experience'], list):
-            for exp in data['experience']:
-                self.add_experience_to_cv(cv_id, exp)
-                
-        if 'education' in data and isinstance(data['education'], list):
-            for edu in data['education']:
-                self.add_education_to_cv(cv_id, edu)
-                
-        if 'certifications' in data and isinstance(data['certifications'], list):
-            for cert in data['certifications']:
-                self.add_certification_to_cv(cv_id, cert)
-                
-        if 'projects' in data and isinstance(data['projects'], list):
-            for project in data['projects']:
-                self.add_project_to_cv(cv_id, project)
-        
-        return self.get_cv_by_id(cv_id, tenant_id)
-    
-    def update_cv(self, cv_id, data, tenant_id=None):
-        """Aktualisiert einen bestehenden Lebenslauf"""
-        # Überprüfen, ob der CV existiert und zum Mandanten gehört (falls angegeben)
-        cv_exists_query = "SELECT c.id FROM cvs c JOIN employees e ON c.employee_id = e.id WHERE c.id = %s"
-        params = [cv_id]
-        
-        if tenant_id:
-            cv_exists_query += " AND e.tenant_id = %s"
-            params.append(tenant_id)
+            self.db.commit()
             
-        cv_exists = self.db.execute(cv_exists_query, params).fetchone()
-        
-        if not cv_exists:
+            return employee_id
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Fehler beim Erstellen des Mitarbeiters: {str(e)}")
             return None
+    
+    def create_cv(self, employee_id: str, cv_data: Dict[str, Any], tenant_id: Optional[str] = None) -> Optional[str]:
+        """
+        Erstelle einen neuen CV für einen Mitarbeiter
         
-        # CV aktualisieren
-        self.db.execute(
+        Args:
+            employee_id: ID des Mitarbeiters
+            cv_data: CV-Daten
+            tenant_id: Optionale tenant_id für Multi-Tenant-Unterstützung
+            
+        Returns:
+            str: ID des erstellten CV oder None bei Fehler
+        """
+        try:
+            cv_id = str(uuid.uuid4())
+            now = datetime.now()
+            
+            # Extrahiere die verschiedenen Daten aus cv_data
+            title = cv_data.get("title", f"Lebenslauf {now.strftime('%d.%m.%Y')}")
+            summary = cv_data.get("summary", "")
+            personal_data = json.dumps(cv_data.get("personal_data", {}))
+            education = json.dumps(cv_data.get("education", []))
+            work_experience = json.dumps(cv_data.get("experience", []))
+            projects = json.dumps(cv_data.get("projects", []))
+            certifications = json.dumps(cv_data.get("certifications", []))
+            languages = json.dumps(cv_data.get("languages", []))
+            hobbies = cv_data.get("hobbies", [])
+            
+            query = """
+            INSERT INTO cvs 
+            (id, employee_id, title, summary, personal_data, education, work_experience, projects, 
+             certifications, languages, hobbies, is_active, is_public, tenant_id, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, FALSE, %s, %s, %s)
             """
-            UPDATE cvs 
-            SET summary = %s, last_updated = NOW(), updated_by = %s
-            WHERE id = %s
-            """,
-            (data.get('summary', ''), data.get('updatedBy'), cv_id)
-        )
+            
+            self.cursor.execute(
+                query, 
+                (cv_id, employee_id, title, summary, personal_data, education, work_experience, 
+                 projects, certifications, languages, hobbies, tenant_id, now, now)
+            )
+            self.db.commit()
+            
+            return cv_id
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Fehler beim Erstellen des CV: {str(e)}")
+            return None
+    
+    def update_cv(self, cv_id: str, cv_data: Dict[str, Any], tenant_id: Optional[str] = None) -> bool:
+        """
+        Aktualisiere einen bestehenden CV
         
-        # Bestehende Verknüpfungen entfernen und neue hinzufügen
-        if 'skills' in data:
-            self.db.execute("DELETE FROM cv_skills WHERE cv_id = %s", (cv_id,))
-            if isinstance(data['skills'], list):
-                for skill in data['skills']:
-                    self.add_skill_to_cv(cv_id, skill)
-                    
-        if 'experience' in data:
-            self.db.execute("DELETE FROM cv_experience WHERE cv_id = %s", (cv_id,))
-            if isinstance(data['experience'], list):
-                for exp in data['experience']:
-                    self.add_experience_to_cv(cv_id, exp)
-                    
-        if 'education' in data:
-            self.db.execute("DELETE FROM cv_education WHERE cv_id = %s", (cv_id,))
-            if isinstance(data['education'], list):
-                for edu in data['education']:
-                    self.add_education_to_cv(cv_id, edu)
-                    
-        if 'certifications' in data:
-            self.db.execute("DELETE FROM cv_certifications WHERE cv_id = %s", (cv_id,))
-            if isinstance(data['certifications'], list):
-                for cert in data['certifications']:
-                    self.add_certification_to_cv(cv_id, cert)
-                    
-        if 'projects' in data:
-            self.db.execute("DELETE FROM cv_projects WHERE cv_id = %s", (cv_id,))
-            if isinstance(data['projects'], list):
-                for project in data['projects']:
-                    self.add_project_to_cv(cv_id, project)
-        
-        return self.get_cv_by_id(cv_id, tenant_id)
+        Args:
+            cv_id: ID des CV
+            cv_data: CV-Daten
+            tenant_id: Optionale tenant_id für Multi-Tenant-Unterstützung
+            
+        Returns:
+            bool: True bei Erfolg, False bei Fehler
+        """
+        try:
+            now = datetime.now()
+            
+            # Konvertiere Daten in JSON-Format
+            cv_data_json = json.dumps(cv_data)
+            
+            if tenant_id:
+                query = """
+                UPDATE cvs 
+                SET data = %s, updated_at = %s
+                WHERE id = %s AND tenant_id = %s
+                """
+                self.cursor.execute(query, (cv_data_json, now, cv_id, tenant_id))
+            else:
+                query = """
+                UPDATE cvs 
+                SET data = %s, updated_at = %s
+                WHERE id = %s
+                """
+                self.cursor.execute(query, (cv_data_json, now, cv_id))
+            
+            self.db.commit()
+            return self.cursor.rowcount > 0
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Fehler beim Aktualisieren des CV mit ID {cv_id}: {str(e)}")
+            return False
     
     def delete_cv(self, cv_id, tenant_id=None):
         """Löscht einen Lebenslauf (markiert ihn als inaktiv)"""
@@ -246,27 +303,48 @@ class CVService:
     # Hilfsmethoden für Skills
     def get_cv_skills(self, cv_id):
         """Gibt alle Skills eines Lebenslaufs zurück"""
-        skills = self.db.execute(
+        try:
+            # Verwende eine parametrisierte Abfrage, um SQL-Injektionen zu vermeiden
+            query = """
+                SELECT s.id, s.name, sc.id as category_id, sc.name as category_name
+                FROM cv_skills cs
+                JOIN skills s ON cs.skill_id = s.id
+                JOIN skill_categories sc ON s.category_id = sc.id
+                WHERE cs.cv_id = %s
+                ORDER BY sc.name, s.name
             """
-            SELECT s.id, s.name, sc.name as category, cs.level
-            FROM cv_skills cs
-            JOIN skills s ON cs.skill_id = s.id
-            JOIN skill_categories sc ON s.category_id = sc.id
-            WHERE cs.cv_id = %s
-            ORDER BY sc.name, s.name
-            """,
-            (cv_id,)
-        ).fetchall()
-        
-        return [
-            {
-                "id": str(skill[0]),
-                "name": skill[1],
-                "category": skill[2],
-                "level": skill[3]
-            }
-            for skill in skills
-        ]
+            
+            result = self.db.execute(query, (cv_id,)).fetchall()
+            
+            # Wenn keine Skills gefunden wurden, gib eine leere Liste zurück
+            if not result:
+                print(f"Keine Skills gefunden für CV {cv_id}")
+                return []
+            
+            # Konvertiere die Ergebnisse in eine Liste von Dictionaries
+            skills = []
+            for row in result:
+                skill = {
+                    "id": row[0],
+                    "name": row[1],
+                    "categoryId": row[2],
+                    "category": row[3]
+                }
+                
+                # Füge Skill-Level hinzu, wenn vorhanden
+                if len(row) > 4:
+                    skill["level"] = row[4]
+                else:
+                    skill["level"] = 0  # Standardwert, wenn kein Level angegeben ist
+                    
+                skills.append(skill)
+                
+            return skills
+            
+        except Exception as e:
+            # Log den Fehler und gib eine leere Liste zurück
+            print(f"Fehler beim Abrufen der Skills für CV {cv_id}: {str(e)}")
+            return []
     
     def add_skill_to_cv(self, cv_id, skill_data):
         """Fügt einen Skill zum Lebenslauf hinzu"""
