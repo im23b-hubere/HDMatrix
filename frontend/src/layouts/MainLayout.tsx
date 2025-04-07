@@ -1,23 +1,29 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Outlet } from 'react-router-dom';
-import { Box, Toolbar, useMediaQuery } from '@mui/material';
+import { Box, CssBaseline, Toolbar, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import Navbar from '../components/Navbar';
 
 const MainLayout: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const drawerWidth = 260;
-
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
-
+  
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ 
+      display: 'flex', 
+      minHeight: '100vh',
+      backgroundColor: 'background.default'
+    }}>
+      <CssBaseline />
+      
       <Navbar 
-        drawerWidth={drawerWidth} 
+        drawerWidth={280} 
+        isMobile={isMobile} 
         mobileOpen={mobileOpen} 
         onDrawerToggle={handleDrawerToggle} 
       />
@@ -26,23 +32,21 @@ const MainLayout: React.FC = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          transition: theme.transitions.create(['width', 'margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-          position: 'relative',
+          width: { md: `calc(100% - 280px)` },
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        <Toolbar /> {/* Abstand für die AppBar */}
-        
+        <Toolbar sx={{ height: { xs: 64 } }} />
         <Box 
           sx={{ 
-            p: { xs: 2, sm: 3 },
-            pb: { xs: 8, sm: 6 },
-            minHeight: 'calc(100vh - 64px)',
+            p: 3, 
+            flexGrow: 1,
+            overflow: 'auto',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            gap: 3
           }}
         >
           <Outlet />

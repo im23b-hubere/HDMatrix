@@ -89,8 +89,8 @@ class CVExtractor:
                     if len(name_parts) >= 2:
                         personal_data['vorname'] = name_parts[0]
                         personal_data['nachname'] = ' '.join(name_parts[1:])
-                        break
-            
+                    break
+                    
             # Verbesserte Adressextraktion
             address_patterns = [
                 # Schweizer PLZ mit Ort
@@ -675,7 +675,7 @@ class CVExtractor:
             
         except Exception as e:
             logger.error(f"Fehler bei der CV-Extraktion: {str(e)}")
-            raise Exception(f"Fehler bei der CV-Extraktion: {str(e)}")
+            raise Exception(f"Fehler bei der CV-Extraktion: {str(e)}") 
             
     def sanitize_cv_data(self, cv_data: Dict[str, Any]) -> Dict[str, Any]:
         """

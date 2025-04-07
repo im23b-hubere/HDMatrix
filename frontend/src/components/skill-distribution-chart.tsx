@@ -47,7 +47,8 @@ const options = {
   },
 };
 
-const data = {
+// Standarddaten als Fallback
+const defaultData = {
   labels: ['JavaScript', 'Python', 'Java', 'React', 'SQL', 'TypeScript', 'Node.js'],
   datasets: [
     {
@@ -61,7 +62,21 @@ const data = {
   ],
 };
 
-export function SkillDistributionChart() {
+interface SkillDistributionChartProps {
+  data?: {
+    labels: string[];
+    datasets: {
+      data: number[];
+      backgroundColor: string;
+      borderColor: string;
+      borderWidth: number;
+      borderRadius: number;
+      maxBarThickness: number;
+    }[];
+  };
+}
+
+export function SkillDistributionChart({ data = defaultData }: SkillDistributionChartProps) {
   return (
     <div className="w-full h-full">
       <Bar options={options} data={data} />

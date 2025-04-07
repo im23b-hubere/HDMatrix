@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Box, Drawer, IconButton, List, ListItem, ListItemButton,
   ListItemIcon, ListItemText, Toolbar, Typography, useMediaQuery,
-  Divider, Avatar, Menu, MenuItem, Button, Badge, Tooltip
+  Divider, Avatar, Menu, MenuItem, Button, Badge, Tooltip, Stack, TextField, InputAdornment
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -21,11 +21,13 @@ import {
   CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useTheme, alpha } from '@mui/material/styles';
+import { styled } from '@mui/material/styles';
 
 export interface NavbarProps {
   mobileOpen?: boolean;
   onDrawerToggle?: () => void;
   drawerWidth?: number;
+  isMobile?: boolean;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ 
@@ -99,112 +101,221 @@ const Navbar: React.FC<NavbarProps> = ({
     },
   ];
 
-  const drawer = (
-    <>
-      <Box 
+  // Stil für Drawer-Header
+  const DrawerHeader = styled('div')(({ theme }) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing(2),
+    background: `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.9)} 0%, ${alpha(theme.palette.primary.main, 0.85)} 100%)`,
+    color: 'white',
+    minHeight: '64px',
+  }));
+
+  // Verbessertes Logo
+  const Logo = () => (
+    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      <WorkspacesIcon sx={{ mr: 1, fontSize: 28 }} />
+      <Typography 
+        variant="h6" 
         sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          height: '100%' 
+          fontWeight: 700, 
+          letterSpacing: '0.02em',
+          background: 'linear-gradient(45deg, #fff 30%, rgba(255,255,255,0.8) 90%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
         }}
       >
-        <Toolbar sx={{ 
-          px: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.8)} 0%, ${alpha(theme.palette.primary.main, 0.8)} 100%)`,
-          color: 'white',
-          '&.MuiToolbar-root': {
-            minHeight: '64px'
-          }
-        }}>
-          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold' }}>
-            HRMatrix
-          </Typography>
+        HRMatrix
+      </Typography>
+    </Box>
+  );
+
+  const drawer = (
+    <>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <DrawerHeader>
+          <Logo />
           {isMobile && (
             <IconButton 
               onClick={onDrawerToggle} 
               sx={{ color: 'inherit' }}
+              size="small"
             >
               <ChevronLeftIcon />
             </IconButton>
           )}
-        </Toolbar>
-        <Divider />
-        <Box sx={{ overflow: 'auto', flexGrow: 1, mt: 2 }}>
-          <List>
-            {drawerItems.map((item) => (
-              <ListItem key={item.text} disablePadding>
-                <ListItemButton
-                  selected={location.pathname === item.path}
-                  onClick={() => navigate(item.path)}
-                  sx={{
-                    borderRadius: '8px',
-                    mx: 1,
-                    '&.Mui-selected': {
-                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                      '&:hover': {
-                        backgroundColor: alpha(theme.palette.primary.main, 0.15),
-                      },
-                      '& .MuiListItemIcon-root': {
-                        color: 'primary.main',
-                      },
-                      '& .MuiListItemText-primary': {
-                        color: 'primary.main',
-                        fontWeight: 600,
-                      },
-                    },
-                  }}
-                >
-                  <ListItemIcon
+        </DrawerHeader>
+        
+        <Divider sx={{ opacity: 0.6 }} />
+        
+        <Box sx={{ overflow: 'auto', flexGrow: 1, py: 2, px: 1.5 }}>
+          {/* Navigation Groups */}
+          <Box sx={{ mb: 2 }}>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                px: 3, 
+                py: 1, 
+                fontWeight: 700, 
+                color: 'text.secondary', 
+                textTransform: 'uppercase',
+                fontSize: '0.7rem',
+                letterSpacing: '0.1em'
+              }}
+            >
+              Hauptnavigation
+            </Typography>
+            
+            <List component="nav" disablePadding>
+              {drawerItems.slice(0, 3).map((item) => (
+                <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+                  <ListItemButton
+                    selected={location.pathname === item.path}
+                    onClick={() => navigate(item.path)}
                     sx={{
-                      color: location.pathname === item.path ? 'primary.main' : 'text.secondary',
-                      minWidth: 42,
+                      px: 2,
+                      py: 1.5,
+                      borderRadius: '10px',
+                      '&.Mui-selected': {
+                        bgcolor: 'primary.main',
+                        '& .MuiListItemIcon-root': {
+                          color: 'white',
+                        },
+                        '& .MuiListItemText-primary': {
+                          color: 'white',
+                          fontWeight: 600,
+                        },
+                        '&:hover': {
+                          bgcolor: 'primary.dark',
+                        },
+                      },
                     }}
                   >
-                    {item.icon}
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={item.text} 
-                    primaryTypographyProps={{
-                      fontWeight: location.pathname === item.path ? 600 : 400,
+                    <ListItemIcon
+                      sx={{
+                        minWidth: 40,
+                        color: location.pathname === item.path ? 'white' : 'text.secondary',
+                      }}
+                    >
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary={item.text} 
+                      primaryTypographyProps={{
+                        fontWeight: location.pathname === item.path ? 600 : 500,
+                        variant: 'body2'
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+          
+          <Box sx={{ my: 2 }}>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                px: 3, 
+                py: 1, 
+                fontWeight: 700, 
+                color: 'text.secondary', 
+                textTransform: 'uppercase',
+                fontSize: '0.7rem',
+                letterSpacing: '0.1em'
+              }}
+            >
+              Verwaltung
+            </Typography>
+            
+            <List component="nav" disablePadding>
+              {drawerItems.slice(3).map((item) => (
+                <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+                  <ListItemButton
+                    selected={location.pathname === item.path}
+                    onClick={() => navigate(item.path)}
+                    sx={{
+                      px: 2,
+                      py: 1.5,
+                      borderRadius: '10px',
+                      '&.Mui-selected': {
+                        bgcolor: 'primary.main',
+                        '& .MuiListItemIcon-root': {
+                          color: 'white',
+                        },
+                        '& .MuiListItemText-primary': {
+                          color: 'white',
+                          fontWeight: 600,
+                        },
+                        '&:hover': {
+                          bgcolor: 'primary.dark',
+                        },
+                      },
                     }}
-                  />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
+                  >
+                    <ListItemIcon
+                      sx={{
+                        minWidth: 40,
+                        color: location.pathname === item.path ? 'white' : 'text.secondary',
+                      }}
+                    >
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary={item.text} 
+                      primaryTypographyProps={{
+                        fontWeight: location.pathname === item.path ? 600 : 500,
+                        variant: 'body2'
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
         </Box>
         
-        <Box sx={{ p: 2 }}>
+        <Box sx={{ p: 2, mt: 'auto' }}>
           <Divider sx={{ mb: 2 }} />
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
-              borderRadius: 1,
+              borderRadius: 2,
               p: 1.5,
-              backgroundColor: alpha(theme.palette.primary.main, 0.04),
+              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.04),
+              '&:hover': {
+                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                cursor: 'pointer'
+              },
+              transition: 'background-color 0.2s',
             }}
+            onClick={handleProfileMenuOpen}
           >
             <Avatar 
               src="/path/to/user-avatar.jpg" 
               alt="Benutzer"
-              sx={{ width: 40, height: 40, mr: 2 }}
-            />
+              sx={{ 
+                width: 42, 
+                height: 42, 
+                mr: 2,
+                background: 'linear-gradient(45deg, #2563eb 30%, #3b82f6 90%)',
+              }}
+            >
+              <PersonIcon fontSize="small" />
+            </Avatar>
             <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-              <Typography variant="subtitle2" noWrap>
+              <Typography variant="subtitle2" noWrap fontWeight={600}>
                 Max Mustermann
               </Typography>
-              <Typography variant="body2" color="text.secondary" noWrap>
+              <Typography variant="caption" color="text.secondary" noWrap>
                 Administrator
               </Typography>
             </Box>
             <IconButton 
               size="small" 
-              onClick={handleProfileMenuOpen}
-              sx={{ ml: 1 }}
+              sx={{ ml: 1, color: 'text.secondary' }}
             >
               <SettingsIcon fontSize="small" />
             </IconButton>
@@ -221,80 +332,101 @@ const Navbar: React.FC<NavbarProps> = ({
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
           ml: { md: `${drawerWidth}px` },
-          boxShadow: '0px 2px 10px rgba(0, 0, 0, 0.1)',
+          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.08)',
           backgroundColor: 'background.paper',
+          backdropFilter: 'blur(20px)',
           color: 'text.primary',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ height: 64 }}>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
+            aria-label="Menü öffnen"
             edge="start"
             onClick={onDrawerToggle}
-            sx={{ mr: 2, display: { md: 'none' } }}
+            sx={{ mr: 2, display: { md: 'none' }, color: 'primary.main' }}
           >
             <MenuIcon />
           </IconButton>
           
+          <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+            <TextField
+              size="small"
+              placeholder="Globale Suche..."
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                  </InputAdornment>
+                ),
+                sx: { 
+                  bgcolor: 'background.default',
+                  borderRadius: 2,
+                  '& fieldset': {
+                    borderColor: 'divider',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: 'primary.main',
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: 'primary.main',
+                  },
+                  width: 250,
+                }
+              }}
+            />
+          </Box>
+          
           <Box sx={{ flexGrow: 1 }} />
           
-          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
-            <Tooltip title="Benachrichtigungen">
-              <IconButton 
-                color="inherit" 
-                onClick={handleNotificationsOpen}
-                sx={{ 
-                  borderRadius: 1.5,
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.08),
-                  },
-                }}
-              >
-                <Badge badgeContent={3} color="error">
-                  <NotificationsIcon />
-                </Badge>
-              </IconButton>
-            </Tooltip>
-            
-            <Box 
-              sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                ml: 2,
-                cursor: 'pointer',
-                padding: 1,
-                borderRadius: 1.5,
-                '&:hover': {
-                  backgroundColor: alpha(theme.palette.primary.main, 0.08),
-                },
-              }}
-              onClick={handleProfileMenuOpen}
-            >
-              <Avatar 
-                src="/path/to/user-avatar.jpg" 
-                alt="Benutzer"
-                sx={{ width: 36, height: 36 }}
-              />
-              <Box sx={{ ml: 1, display: { xs: 'none', md: 'block' } }}>
-                <Typography variant="subtitle2" component="div" noWrap>
-                  Max Mustermann
-                </Typography>
-                <Typography variant="body2" color="text.secondary" component="div" noWrap>
-                  Administrator
-                </Typography>
-              </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Tooltip title="Benachrichtigungen">
+                <IconButton 
+                  color="inherit" 
+                  onClick={handleNotificationsOpen}
+                  sx={{ 
+                    color: 'text.secondary',
+                    '&:hover': {
+                      color: 'primary.main',
+                      backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                    }
+                  }}
+                >
+                  <Badge badgeContent={3} color="primary">
+                    <NotificationsIcon />
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+              
+              <Tooltip title="Profil">
+                <IconButton 
+                  color="inherit" 
+                  onClick={handleProfileMenuOpen}
+                  sx={{ 
+                    color: 'text.secondary',
+                    ml: 1,
+                    '&:hover': {
+                      color: 'primary.main',
+                      backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                    }
+                  }}
+                >
+                  <Avatar 
+                    sx={{ 
+                      width: 32, 
+                      height: 32,
+                      background: 'linear-gradient(45deg, #2563eb 30%, #3b82f6 90%)',
+                    }}
+                  >
+                    <PersonIcon sx={{ fontSize: 18 }} />
+                  </Avatar>
+                </IconButton>
+              </Tooltip>
             </Box>
-          </Box>
-          
-          <Box sx={{ display: { xs: 'flex', sm: 'none' } }}>
-            <IconButton
-              color="inherit"
-              onClick={handleProfileMenuOpen}
-            >
-              <AccountCircleIcon />
-            </IconButton>
-          </Box>
+          </Stack>
         </Toolbar>
       </AppBar>
       

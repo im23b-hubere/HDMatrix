@@ -155,6 +155,8 @@ def extract_preview():
                                         basic_extracted_data[key] = value
                                 
                                 extraction_method = "HuggingFace"
+                            else:
+                                logger.warning(f"HuggingFace-Extraktion fehlgeschlagen: {enhanced_data.get('message', 'Unbekannter Fehler')}")
                         else:
                             logger.warning(f"HuggingFace-Test fehlgeschlagen: {test_result.get('message')}")
                     except Exception as e:
@@ -198,12 +200,12 @@ def extract_preview():
                     "extracted_data": {},
                     "error": "extraction_error"
                 }), 500
-        
+                
         except Exception as e:
-            logger.error(f"Fehler beim Verarbeiten der Datei: {str(e)}")
+            logger.error(f"Fehler bei der Dateiverarbeitung: {str(e)}")
             return jsonify({
                 "success": False,
-                "message": f"Fehler beim Verarbeiten der Datei: {str(e)}",
+                "message": f"Fehler bei der Dateiverarbeitung: {str(e)}",
                 "error": "file_processing_error"
             }), 500
 

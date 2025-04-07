@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 DB_CONFIG = {
     'dbname': 'hrmatrixdb',
     'user': 'postgres',
-    'password': 'postgres',
+    'password': 'Steinadler17',
     'host': 'localhost',
     'port': '5432'
 }
@@ -24,13 +24,14 @@ DB_CONFIG = {
 def get_db_connection():
     """Stellt eine Verbindung zur Datenbank her und gibt ein Connection-Objekt zurück."""
     try:
-        # Vereinfachte Verbindungsparameter ohne Kodierungsangaben
+        # Verbindungsparameter mit options für Kodierung
         dsn_params = {
             'dbname': DB_CONFIG['dbname'],
             'user': DB_CONFIG['user'],
             'password': DB_CONFIG['password'],
             'host': DB_CONFIG['host'], 
-            'port': DB_CONFIG['port']
+            'port': DB_CONFIG['port'],
+            'options': '-c client_encoding=latin1'  # Kodierung über Options setzen
         }
         
         # Zeige Verbindungsparameter (ohne Passwort)
@@ -38,7 +39,7 @@ def get_db_connection():
         safe_dsn['password'] = '***'
         logger.info(f"Verbindungsparameter: {safe_dsn}")
         
-        # Einfache Verbindung ohne Kodierungsangabe
+        # Verbindung herstellen
         conn = psycopg2.connect(**dsn_params)
         
         logger.info("Datenbankverbindung erfolgreich hergestellt")

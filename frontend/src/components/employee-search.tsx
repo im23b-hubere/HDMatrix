@@ -5,10 +5,15 @@ import { motion, AnimatePresence, useAnimation } from "framer-motion"
 import { Search, Filter, X, ChevronDown, ChevronUp, Mail, Phone, MapPin, Briefcase, Award, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton as UISkeletion } from "@/components/ui/skeleton"
+import {
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
+} from "@/components/ui/tabs"
 import { DatabaseService } from '../services/db-service'
 import {
     Select,
@@ -17,6 +22,43 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../components/ui/select"
+import { 
+  Box, 
+  Typography, 
+  TextField, 
+  InputAdornment, 
+  Chip, 
+  IconButton, 
+  MenuItem, 
+  Menu, 
+  Paper, 
+  FormControl, 
+  FormControlLabel, 
+  Stack, 
+  alpha, 
+  useTheme, 
+  useMediaQuery,
+  InputLabel,
+  Checkbox, 
+  Avatar,
+  Skeleton,
+  Grid,
+  Select as MuiSelect,
+  SelectChangeEvent,
+  Pagination,
+  ListSubheader
+} from '@mui/material';
+import {
+  Sort as SortIcon,
+  MoreVert as MoreVertIcon,
+  CheckCircle as CheckCircleIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  LocationOn as LocationOnIcon,
+  School as SchoolIcon,
+  Star as StarIcon,
+  Person as PersonIcon
+} from '@mui/icons-material';
 
 interface Employee {
     id: number
@@ -26,6 +68,10 @@ interface Employee {
     position: string
     abteilung_id: number
     skills: string[]
+    education?: string
+    profileImage?: string
+    rating?: number
+    standort?: string
 }
 
 // Kategorisierte Skills für eine bessere Übersicht
@@ -52,14 +98,28 @@ const DEPARTMENTS = [
     { id: 8, name: 'Qualität & Compliance', description: 'Qualitätsmanagement und Compliance' }
 ];
 
+const locations = ['Alle', 'Berlin', 'München', 'Hamburg', 'Frankfurt', 'Köln', 'Düsseldorf'];
+
 export function EmployeeSearch() {
     const [searchQuery, setSearchQuery] = useState('')
     const [employees, setEmployees] = useState<Employee[]>([])
-    const [departments, setDepartments] = useState<Array<{id: number, name: string, description: string}>>([])
+    const [departments, setDepartments] = useState<Array<{id: number, name: string, description?: string}>>([])
     const [selectedDepartment, setSelectedDepartment] = useState<string>('all')
     const [selectedSkills, setSelectedSkills] = useState<string[]>([])
-    const [isLoading, setIsLoading] = useState(false)
-    const controls = useAnimation()
+    const [selectedLocation, setSelectedLocation] = useState('Alle')
+    const [showFilter, setShowFilter] = useState(false)
+    const [sortOrder, setSortOrder] = useState<'name' | 'department' | 'rating'>('name')
+    const [showSkillsOnly, setShowSkillsOnly] = useState(false)
+    const [isLoading, setIsLoading] = useState(true)
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+    
+    // Paginierung
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+    const [totalResults, setTotalResults] = useState(0)
+    const [totalPages, setTotalPages] = useState(1)
 
     // Funktion zum Ausführen der Suche
     const performSearch = async () => {
@@ -67,9 +127,14 @@ export function EmployeeSearch() {
         try {
             const result = await DatabaseService.searchEmployees(searchQuery, {
                 department: selectedDepartment === 'all' ? undefined : parseInt(selectedDepartment),
-                skills: selectedSkills
+                skills: selectedSkills,
+                location: selectedLocation !== 'Alle' ? selectedLocation : undefined,
+                page: currentPage,
+                page_size: pageSize
             })
             setEmployees(result.employees)
+            setTotalResults(result.total)
+            setTotalPages(result.total_pages)
         } catch (error) {
             console.error('Error searching employees:', error)
         } finally {
@@ -77,25 +142,41 @@ export function EmployeeSearch() {
         }
     }
 
-    // Suche automatisch ausführen, wenn sich die ausgewählten Fähigkeiten ändern
+    // Suche automatisch ausführen, wenn sich die Seitenparameter ändern
     useEffect(() => {
         performSearch()
-    }, [selectedSkills])
+    }, [currentPage, pageSize, selectedSkills])
 
+    // Beim ersten Laden Abteilungen abrufen und die Suche ausführen
     useEffect(() => {
-        // Animation beim Laden
-        controls.start({ y: 0, opacity: 1 })
+        async function loadInitialData() {
+            try {
+                const depts = await DatabaseService.getDepartments()
+                setDepartments(depts)
+            } catch (error) {
+                console.error('Fehler beim Laden der Abteilungen:', error)
+            }
+            
+            performSearch()
+        }
         
-        // Setze die vordefinierten Abteilungen
-        setDepartments(DEPARTMENTS)
-    }, [controls])
+        loadInitialData()
+    }, [])
 
-    const handleDepartmentChange = (value: string) => {
-        setSelectedDepartment(value)
-        performSearch() // Suche auch bei Abteilungsänderung ausführen
+    const handleDepartmentChange = (event: SelectChangeEvent<string>) => {
+        setSelectedDepartment(event.target.value)
+        setCurrentPage(1) // Zurück zur ersten Seite bei Filter-Änderung
+        performSearch()
+    }
+
+    const handleLocationChange = (event: SelectChangeEvent<string>) => {
+        setSelectedLocation(event.target.value)
+        setCurrentPage(1) // Zurück zur ersten Seite bei Filter-Änderung
+        performSearch()
     }
 
     const handleSearch = () => {
+        setCurrentPage(1) // Zurück zur ersten Seite bei neuer Suche
         performSearch()
     }
 
@@ -105,6 +186,7 @@ export function EmployeeSearch() {
                 ? prev.filter(s => s !== skill)
                 : [...prev, skill]
         )
+        setCurrentPage(1) // Zurück zur ersten Seite bei Filter-Änderung
     }
 
     // Funktion zum Abrufen der Fähigkeiten basierend auf der ausgewählten Abteilung
@@ -114,7 +196,7 @@ export function EmployeeSearch() {
             return Object.values(SKILL_CATEGORIES).flat()
         }
         
-        const department = DEPARTMENTS.find(dept => dept.id.toString() === selectedDepartment)
+        const department = departments.find(dept => dept.id.toString() === selectedDepartment)
         if (department) {
             // Finde die passende Kategorie basierend auf dem Abteilungsnamen
             const matchingCategory = Object.keys(SKILL_CATEGORIES).find(category => 
@@ -127,246 +209,692 @@ export function EmployeeSearch() {
         return []
     }
 
-    return (
-        <div className="container mx-auto p-4 md:p-6 space-y-6">
-            <div className="space-y-2">
-                <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Mitarbeiter-Suche</h2>
-                <p className="text-sm md:text-base text-muted-foreground">
-                    Finden Sie Mitarbeiter anhand von Namen, Abteilungen oder Fähigkeiten
-                </p>
-            </div>
+    const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+        setAnchorEl(event.currentTarget)
+    }
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {/* Suchfeld */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium">Name oder Stichwort</label>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            placeholder="Suchen..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9"
-                        />
-                    </div>
+    const handleMenuClose = () => {
+        setAnchorEl(null)
+    }
+
+    const handleClearFilters = () => {
+        setSearchQuery('')
+        setSelectedDepartment('all')
+        setSelectedSkills([])
+        setSelectedLocation('Alle')
+        setShowSkillsOnly(false)
+        setCurrentPage(1) // Zurück zur ersten Seite bei Filter-Reset
+        performSearch()
+    }
+
+    const handleSort = (order: 'name' | 'department' | 'rating') => {
+        setSortOrder(order)
+        handleMenuClose()
+    }
+
+    const handlePageChange = (event: React.ChangeEvent<unknown>, page: number) => {
+        setCurrentPage(page)
+    }
+
+    const handlePageSizeChange = (event: SelectChangeEvent<string>) => {
+        const newSize = parseInt(event.target.value)
+        setPageSize(newSize)
+        setCurrentPage(1) // Zurück zur ersten Seite bei Änderung der Seitengröße
+    }
+
+    const getDepartmentNameById = (id: number) => {
+        const dept = departments.find(d => d.id === id)
+        return dept ? dept.name : 'Unbekannte Abteilung'
+    }
+
+    // Sortiere die Mitarbeiter basierend auf der ausgewählten Sortierung
+    const sortedEmployees = [...employees].sort((a, b) => {
+        if (sortOrder === 'name') return (a.vorname + a.nachname).localeCompare(b.vorname + b.nachname)
+        if (sortOrder === 'department') return a.abteilung_id - b.abteilung_id
+        if (sortOrder === 'rating' && a.rating && b.rating) return b.rating - a.rating
+        return 0
+    })
+
+    // Für die Skills-Dropdown-Komponente: Extrem vereinfacht, native DOM-Elemente
+    const SkillsDropdown = () => {
+        const [open, setOpen] = useState(false);
+        const dropdownRef = React.useRef<HTMLDivElement>(null);
+        
+        // Skills nach Anzahl begrenzen, damit das Dropdown wie im Bild aussieht
+        const allSkills = React.useMemo(() => {
+            return [
+                { id: 'all', name: 'Alle' },
+                { id: 'javascript', name: 'JavaScript' },
+                { id: 'typescript', name: 'TypeScript' },
+                { id: 'python', name: 'Python' },
+                { id: 'java', name: 'Java' },
+                { id: 'csharp', name: 'C#' },
+                { id: 'react', name: 'React' },
+                { id: 'angular', name: 'Angular' }
+            ];
+        }, []);
+        
+        // Außerhalb des Dropdowns klicken zum Schließen
+        useEffect(() => {
+            const handleClickOutside = (event: MouseEvent) => {
+                if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                    setOpen(false);
+                }
+            };
+            
+            if (open) {
+                document.addEventListener('mousedown', handleClickOutside);
+            }
+            return () => {
+                document.removeEventListener('mousedown', handleClickOutside);
+            };
+        }, [open]);
+        
+        const handleSkillSelect = (skillId: string) => {
+            if (skillId === 'all') {
+                setSelectedSkills([]);
+            } else {
+                const skill = allSkills.find(s => s.id === skillId)?.name || '';
+                if (skill && !selectedSkills.includes(skill)) {
+                    setSelectedSkills(prev => [...prev, skill]);
+                } else if (skill) {
+                    setSelectedSkills(prev => prev.filter(s => s !== skill));
+                }
+            }
+            setCurrentPage(1);
+        };
+        
+        return (
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
+                <div 
+                    onClick={() => setOpen(!open)}
+                    style={{
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        padding: '8px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '180px',
+                        backgroundColor: 'white',
+                        cursor: 'pointer',
+                    }}
+                >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {selectedSkills.length > 0 ? `${selectedSkills.length} Skills` : 'Skills...'}
+                    </span>
+                    <ChevronDown size={16} />
                 </div>
 
-                {/* Abteilungsauswahl */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium">Abteilung</label>
-                    <Select value={selectedDepartment} onValueChange={handleDepartmentChange}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Abteilung auswählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Alle Abteilungen</SelectItem>
-                            {departments.map((dept) => (
-                                <SelectItem key={dept.id} value={dept.id.toString()}>
-                                    <div className="flex flex-col">
-                                        <span>{dept.name}</span>
-                                        <span className="text-xs text-muted-foreground">{dept.description}</span>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {/* Suchbutton */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium">&nbsp;</label>
-                    <Button 
-                        onClick={handleSearch} 
-                        className="w-full"
-                        disabled={isLoading}
+                {open && (
+                    <div 
+                        style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 4px)',
+                            left: 0,
+                            width: '200px',
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            backgroundColor: 'white',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                            borderRadius: '4px',
+                            zIndex: 1000,
+                        }}
                     >
-                        {isLoading ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Suche...
-                            </>
-                        ) : (
-                            <>
-                                <Search className="mr-2 h-4 w-4" />
-                                Suchen
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </div>
-
-            {/* Fähigkeiten-Filter */}
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">Fähigkeiten filtern</h3>
-                    {selectedSkills.length > 0 && (
-                        <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setSelectedSkills([])}
-                            className="text-muted-foreground hover:text-foreground"
-                        >
-                            Alle Filter zurücksetzen
-                        </Button>
-                    )}
-                </div>
-
-                {/* Ausgewählte Fähigkeiten */}
-                {selectedSkills.length > 0 && (
-                    <div className="space-y-2">
-                        <div className="text-sm font-medium text-muted-foreground">
-                            Ausgewählte Fähigkeiten:
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {selectedSkills.map((skill) => (
-                                <Badge
-                                    key={skill}
-                                    variant="default"
-                                    className="cursor-pointer"
-                                    onClick={() => handleSkillClick(skill)}
-                                >
-                                    {skill}
-                                    <X className="ml-1 h-3 w-3" />
-                                </Badge>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Verfügbare Fähigkeiten */}
-                <div className="space-y-2">
-                    <div className="text-sm font-medium text-muted-foreground">
-                        {selectedDepartment === 'all' 
-                            ? 'Verfügbare Fähigkeiten:'
-                            : `Verfügbare Fähigkeiten in ${DEPARTMENTS.find(d => d.id.toString() === selectedDepartment)?.name}:`
-                        }
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {getDepartmentSkills().map((skill) => (
-                            <Badge
-                                key={skill}
-                                variant={selectedSkills.includes(skill) ? "default" : "outline"}
-                                className="cursor-pointer"
-                                onClick={() => handleSkillClick(skill)}
+                        {allSkills.map((skill) => (
+                            <div 
+                                key={skill.id}
+                                onClick={() => handleSkillSelect(skill.id)}
+                                style={{
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    fontWeight: skill.id === 'all' ? 
+                                        (selectedSkills.length === 0 ? 'bold' : 'normal') : 
+                                        (selectedSkills.includes(skill.name) ? 'bold' : 'normal'),
+                                    borderBottom: skill.id === 'all' ? '1px solid #eee' : 'none',
+                                    backgroundColor: 'white',
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
                             >
-                                {skill}
-                            </Badge>
+                                {skill.name}
+                            </div>
                         ))}
                     </div>
-                </div>
+                )}
             </div>
+        );
+    };
 
-            {/* Ergebnisliste */}
-            <div className="space-y-4">
-                <h3 className="text-lg font-semibold">
-                    Gefundene Mitarbeiter ({employees.length})
-                </h3>
+    // Anpassung der Erfahrungs- und Verfügbarkeits-Dropdowns im gleichen Stil
+    const ExperienceDropdown = () => {
+        // Simple Experience Dropdown
+        return (
+            <Box
+                sx={{
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    py: 1,
+                    px: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: 180,
+                    bgcolor: 'white',
+                    cursor: 'pointer',
+                    '&:hover': {
+                        borderColor: '#999'
+                    }
+                }}
+            >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Er...
+                </span>
+                <ChevronDown size={16} />
+            </Box>
+        );
+    };
+
+    const AvailabilityDropdown = () => {
+        // Simple Availability Dropdown
+        return (
+            <Box
+                sx={{
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    py: 1,
+                    px: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: 180,
+                    bgcolor: 'white',
+                    cursor: 'pointer',
+                    '&:hover': {
+                        borderColor: '#999'
+                    }
+                }}
+            >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Ve...
+                </span>
+                <ChevronDown size={16} />
+            </Box>
+        );
+    };
+
+    return (
+        <Box>
+            <Box sx={{ mb: 4 }}>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
+                    Mitarbeitersuche
+                </Typography>
+                <Typography color="text.secondary" sx={{ mb: 3 }}>
+                    Finde Mitarbeiter anhand von Name, Position, Fähigkeiten oder Abteilung
+                </Typography>
                 
-                <AnimatePresence mode="wait">
-                    {isLoading ? (
-                        <motion.div
-                            key="loading"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-                        >
-                            {[...Array(6)].map((_, i) => (
-                                <Card key={i} className="p-4 animate-pulse">
-                                    <div className="space-y-2">
-                                        <div className="h-4 bg-muted rounded w-3/4" />
-                                        <div className="h-3 bg-muted rounded w-1/2" />
-                                        <div className="flex flex-wrap gap-1">
-                                            {[...Array(3)].map((_, j) => (
-                                                <div key={j} className="h-5 bg-muted rounded w-16" />
-                                            ))}
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </motion.div>
-                    ) : employees.length > 0 ? (
-                        <motion.div
-                            key="results"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-                        >
-                            {employees.map((employee) => (
-                                <motion.div
-                                    key={employee.id}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.2 }}
+                <Paper sx={{ mb: 3, p: 1, borderRadius: 2 }}>
+                    <Tabs defaultValue="search" className="w-full">
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="search">Mitarbeitersuche</TabsTrigger>
+                            <TabsTrigger value="departments">Abteilungen</TabsTrigger>
+                            <TabsTrigger value="projects">Projekte</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="search" className="p-2">
+                            <Box sx={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                                <TextField
+                                    placeholder="Suche nach Namen, Position oder Fähigkeiten..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    variant="outlined"
+                                    fullWidth
+                                    sx={{ 
+                                        maxWidth: 500,
+                                        flexGrow: 1,
+                                        '& .MuiOutlinedInput-root': {
+                                            borderRadius: 2,
+                                            bgcolor: 'background.paper',
+                                        }
+                                    }}
+                                    InputProps={{
+                                        startAdornment: (
+                                            <InputAdornment position="start">
+                                                <Search className="h-4 w-4 text-muted-foreground" />
+                                            </InputAdornment>
+                                        ),
+                                        endAdornment: searchQuery && (
+                                            <InputAdornment position="end">
+                                                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                                                    <X className="h-4 w-4 text-muted-foreground" />
+                                                </IconButton>
+                                            </InputAdornment>
+                                        ),
+                                    }}
+                                />
+                                
+                                <Button 
+                                    onClick={() => setShowFilter(!showFilter)}
+                                    variant="outline"
+                                    className="gap-2"
                                 >
-                                    <Card className="p-4 hover:shadow-md transition-shadow">
-                                        <div className="space-y-2">
-                                            <div className="font-medium">
-                                                {employee.vorname} {employee.nachname}
-                                            </div>
-                                            <div className="text-sm text-muted-foreground">
-                                                {employee.email}
-                                            </div>
-                                            <div className="flex flex-wrap gap-1">
-                                                {employee.skills.map((skill) => (
-                                                    <Badge key={skill} variant="secondary" className="text-xs">
-                                                        {skill}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </Card>
-                                </motion.div>
-                            ))}
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="no-results"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="text-center py-10"
-                        >
-                            <div className="inline-flex items-center justify-center rounded-full bg-muted p-8 mb-4">
-                                <Search className="h-10 w-10 text-muted-foreground" />
-                            </div>
-                            <h3 className="text-lg font-semibold mb-1">Keine Ergebnisse gefunden</h3>
-                            <p className="text-muted-foreground">
-                                Versuchen Sie andere Suchbegriffe oder Filter
-                            </p>
-                        </motion.div>
+                                    <Filter className="h-4 w-4" />
+                                    Filter
+                                </Button>
+                                
+                        <Button 
+                                    onClick={handleMenuClick}
+                                    variant="outline"
+                                    className="gap-2"
+                                >
+                                    <SortIcon fontSize="small" style={{ marginRight: 5 }} />
+                                    Sortieren
+                        </Button>
+                                
+                                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 3 }}>
+                                    <Typography sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                                        Suche nach Mitarbeitern mit bestimmten Fähigkeiten
+                                    </Typography>
+                                    
+                                    <Box sx={{ display: 'flex', gap: 2, mt: 2, alignItems: 'center' }}>
+                                        <SkillsDropdown />
+                                        <ExperienceDropdown />
+                                        <AvailabilityDropdown />
+                                        
+                                        <Button 
+                                    variant="default"
+                                            className="px-4 py-1 h-9 rounded-md flex items-center gap-2"
+                                            onClick={handleSearch}
+                                        >
+                                            <Search size={16} />
+                                            Suchen
+                                        </Button>
+                                    </Box>
+                                </Box>
+                            </Box>
+                            
+                            {showFilter && (
+                                <Paper 
+                                    elevation={0} 
+                                    sx={{ 
+                                        mt: 2, 
+                                        p: 3, 
+                                        borderRadius: 2,
+                                        border: '1px solid',
+                                        borderColor: 'divider'
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                            Filter
+                                        </Typography>
+                                        <Button 
+                                            onClick={handleClearFilters}
+                                            variant="soft"
+                                            size="sm"
+                                        >
+                                            Zurücksetzen
+                                        </Button>
+                                    </Box>
+                                    
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={6} md={3}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel id="department-select-label">Abteilung</InputLabel>
+                                                <MuiSelect
+                                                    labelId="department-select-label"
+                                                    id="department-select"
+                                                    value={selectedDepartment}
+                                                    label="Abteilung"
+                                                    onChange={handleDepartmentChange}
+                                                >
+                                                    <MenuItem value="all">Alle Abteilungen</MenuItem>
+                                                    {departments.map((department) => (
+                                                        <MenuItem key={department.id} value={department.id.toString()}>
+                                                            {department.name}
+                                                        </MenuItem>
+                                                    ))}
+                                                </MuiSelect>
+                                            </FormControl>
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} sm={6} md={3}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel id="location-select-label">Standort</InputLabel>
+                                                <MuiSelect
+                                                    labelId="location-select-label"
+                                                    id="location-select"
+                                                    value={selectedLocation}
+                                                    label="Standort"
+                                                    onChange={handleLocationChange}
+                                                >
+                                                    {locations.map((location) => (
+                                                        <MenuItem key={location} value={location}>
+                                                            {location}
+                                                        </MenuItem>
+                                                    ))}
+                                                </MuiSelect>
+                                            </FormControl>
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} sm={6} md={3}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox 
+                                                        checked={showSkillsOnly} 
+                                                        onChange={(e) => setShowSkillsOnly(e.target.checked)}
+                                                        color="primary"
+                                                    />
+                                                }
+                                                label="Nur mit Skills anzeigen"
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                </Paper>
+                            )}
+                            
+                            {(searchQuery || selectedDepartment !== 'all' || selectedLocation !== 'Alle' || selectedSkills.length > 0) && (
+                                <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                    {searchQuery && (
+                                        <Chip 
+                                            label={`Suche: ${searchQuery}`} 
+                                            onDelete={() => setSearchQuery('')}
+                                            color="primary"
+                                            variant="outlined"
+                                            size="small"
+                                        />
+                                    )}
+                                    {selectedDepartment !== 'all' && (
+                                        <Chip 
+                                            label={`Abteilung: ${departments.find(d => d.id.toString() === selectedDepartment)?.name || ''}`} 
+                                            onDelete={() => setSelectedDepartment('all')}
+                                            color="primary"
+                                            variant="outlined"
+                                            size="small"
+                                        />
+                                    )}
+                                    {selectedLocation !== 'Alle' && (
+                                        <Chip 
+                                            label={`Standort: ${selectedLocation}`} 
+                                            onDelete={() => setSelectedLocation('Alle')}
+                                            color="primary"
+                                            variant="outlined"
+                                            size="small"
+                                        />
+                                    )}
+                                    {selectedSkills.map(skill => (
+                                        <Chip 
+                                key={skill}
+                                            label={`Skill: ${skill}`} 
+                                            onDelete={() => handleSkillClick(skill)}
+                                            color="primary"
+                                            variant="outlined"
+                                            size="small"
+                                        />
+                                    ))}
+                                </Box>
+                            )}
+                        </TabsContent>
+                        <TabsContent value="departments" className="p-2">
+                            <Box sx={{ p: 2, textAlign: 'center' }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    Abteilungsübersicht in Entwicklung...
+                                </Typography>
+                            </Box>
+                        </TabsContent>
+                        <TabsContent value="projects" className="p-2">
+                            <Box sx={{ p: 2, textAlign: 'center' }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    Projektübersicht in Entwicklung...
+                                </Typography>
+                            </Box>
+                        </TabsContent>
+                    </Tabs>
+                </Paper>
+            </Box>
+            
+                    {isLoading ? (
+                <Grid container spacing={3}>
+                    {[1, 2, 3, 4, 5, 6].map((skeleton) => (
+                        <Grid item xs={12} sm={6} md={4} key={skeleton}>
+                            <Card>
+                                <CardContent>
+                                    <Box sx={{ display: 'flex', mb: 2 }}>
+                                        <Box sx={{ width: 60, height: 60, borderRadius: '50%' }}>
+                                            <Skeleton variant="circular" width={60} height={60} />
+                                        </Box>
+                                        <Box sx={{ ml: 2, flex: 1 }}>
+                                            <Skeleton variant="text" sx={{ width: '70%', height: 32 }} />
+                                            <Skeleton variant="text" sx={{ width: '50%', height: 24 }} />
+                                        </Box>
+                                    </Box>
+                                    <Skeleton variant="text" sx={{ width: '90%' }} />
+                                    <Skeleton variant="text" sx={{ width: '60%' }} />
+                                    <Box sx={{ mt: 2 }}>
+                                        <Skeleton variant="rectangular" sx={{ height: 32 }} />
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                    ))}
+                </Grid>
+            ) : sortedEmployees.length === 0 ? (
+                <Box sx={{ 
+                    textAlign: 'center', 
+                    py: 10, 
+                    px: 2,
+                    bgcolor: 'background.paper',
+                    borderRadius: 2,
+                    border: '1px dashed',
+                    borderColor: 'divider'
+                }}>
+                    <Typography variant="h6" gutterBottom>
+                        Keine Mitarbeiter gefunden
+                    </Typography>
+                    <Typography color="text.secondary">
+                        Versuche es mit anderen Suchbegriffen oder Filtern.
+                    </Typography>
+                    <Button 
+                        variant="outline"
+                        onClick={handleClearFilters}
+                        className="mt-3"
+                    >
+                        Filter zurücksetzen
+                    </Button>
+                </Box>
+            ) : (
+                <>
+                    <Grid container spacing={3}>
+                        {sortedEmployees.map((employee) => (
+                            <Grid item xs={12} sm={6} md={4} key={employee.id}>
+                                <Card>
+                                    <CardContent className="pb-0">
+                                        <Box sx={{ display: 'flex', mb: 3 }}>
+                                            <Avatar
+                                                alt={`${employee.vorname} ${employee.nachname}`}
+                                                src={employee.profileImage}
+                                                sx={{ 
+                                                    width: 60, 
+                                                    height: 60,
+                                                    bgcolor: 'primary.main',
+                                                    fontSize: '1.5rem',
+                                                    fontWeight: 600,
+                                                    flexShrink: 0
+                                                }}
+                                            >
+                                                {employee.vorname.charAt(0)}
+                                            </Avatar>
+                                            <Box sx={{ ml: 2, overflow: 'hidden', width: 'calc(100% - 75px)' }}>
+                                                <Typography 
+                                                    variant="h6" 
+                                                    component="h3" 
+                                                    sx={{ 
+                                                        fontWeight: 600,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        mb: 0.5
+                                                    }}
+                                                >
+                                                    <Box component="span" sx={{ 
+                                                        maxWidth: 'calc(100% - 40px)', 
+                                                        overflow: 'hidden', 
+                                                        textOverflow: 'ellipsis', 
+                                                        whiteSpace: 'nowrap',
+                                                        display: 'block'
+                                                    }}>
+                                                        {employee.vorname} {employee.nachname}
+                                                    </Box>
+                                                    {employee.rating && (
+                                                        <Box sx={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            ml: 1,
+                                                            color: 'warning.main',
+                                                            fontSize: '0.875rem',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            <StarIcon sx={{ fontSize: '1rem', mr: 0.5 }} />
+                                                            {employee.rating}
+                                                        </Box>
+                                                    )}
+                                                </Typography>
+                                                <Typography 
+                                                    variant="body2" 
+                                                    color="text.secondary" 
+                                                    noWrap
+                                                    sx={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center'
+                                                    }}
+                                                >
+                                                    {employee.position}
+                                                </Typography>
+                                                <Chip 
+                                                    label={getDepartmentNameById(employee.abteilung_id)} 
+                                                    size="small" 
+                                                    sx={{ 
+                                                        mt: 1, 
+                                                        height: 24, 
+                                                        fontSize: '0.75rem',
+                                                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                                                        color: 'primary.main',
+                                                        fontWeight: 600,
+                                                        maxWidth: '100%',
+                                                        '& .MuiChip-label': {
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            padding: '0 8px'
+                                                        }
+                                                    }} 
+                                                />
+                                            </Box>
+                                        </Box>
+                                        
+                                        <Stack spacing={1} sx={{ mb: 2 }}>
+                                            <Box sx={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center',
+                                                color: 'text.secondary',
+                                                fontSize: '0.875rem'
+                                            }}>
+                                                <EmailIcon fontSize="small" sx={{ mr: 1, opacity: 0.7, flexShrink: 0 }} />
+                                                <Typography variant="body2" noWrap sx={{ width: '100%' }}>{employee.email}</Typography>
+                                            </Box>
+                                            {employee.education && (
+                                                <Box sx={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center',
+                                                    color: 'text.secondary',
+                                                    fontSize: '0.875rem'
+                                                }}>
+                                                    <SchoolIcon fontSize="small" sx={{ mr: 1, opacity: 0.7, flexShrink: 0 }} />
+                                                    <Typography variant="body2" noWrap sx={{ width: '100%' }}>{employee.education}</Typography>
+                                                </Box>
+                                            )}
+                                            {employee.standort && (
+                                                <Box sx={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center',
+                                                    color: 'text.secondary',
+                                                    fontSize: '0.875rem'
+                                                }}>
+                                                    <LocationOnIcon fontSize="small" sx={{ mr: 1, opacity: 0.7, flexShrink: 0 }} />
+                                                    <Typography variant="body2" noWrap sx={{ width: '100%' }}>{employee.standort}</Typography>
+                                                </Box>
+                                            )}
+                                        </Stack>
+                                        
+                                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                            Fähigkeiten
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: '80px', overflow: 'auto' }}>
+                                            {employee.skills.map((skill) => (
+                                                <Chip 
+                                                    key={skill} 
+                                                    label={skill} 
+                                                    size="small"
+                                                    sx={{ 
+                                                        height: 24, 
+                                                        fontSize: '0.75rem',
+                                                        bgcolor: 'background.default',
+                                                        margin: '0 2px 4px 0'
+                                                    }}
+                                                />
+                                            ))}
+                                        </Box>
+                                    </CardContent>
+                                    <CardFooter className="flex justify-between">
+                                        <Button size="sm" variant="soft">Profil</Button>
+                                        <Button size="sm">Kontaktieren</Button>
+                                    </CardFooter>
+                                </Card>
+                            </Grid>
+                        ))}
+                    </Grid>
+                    
+                    {/* Paginierung */}
+                    {totalResults > 0 && (
+                        <Box sx={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            mt: 4,
+                            px: 2
+                        }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
+                                    {`${Math.min((currentPage - 1) * pageSize + 1, totalResults)} - ${Math.min(currentPage * pageSize, totalResults)} von ${totalResults} Ergebnissen`}
+                                </Typography>
+                                <FormControl size="small" sx={{ minWidth: 120 }}>
+                                    <MuiSelect
+                                        value={pageSize.toString()}
+                                        onChange={handlePageSizeChange}
+                                        displayEmpty
+                                        inputProps={{ 'aria-label': 'items per page' }}
+                                        sx={{ height: 32 }}
+                                    >
+                                        <MenuItem value="5">5 pro Seite</MenuItem>
+                                        <MenuItem value="10">10 pro Seite</MenuItem>
+                                        <MenuItem value="25">25 pro Seite</MenuItem>
+                                        <MenuItem value="50">50 pro Seite</MenuItem>
+                                    </MuiSelect>
+                                </FormControl>
+                            </Box>
+                            
+                            <Pagination 
+                                count={totalPages} 
+                                page={currentPage}
+                                onChange={handlePageChange}
+                                variant="outlined" 
+                                shape="rounded"
+                                color="primary"
+                                size="medium"
+                            />
+                        </Box>
                     )}
-                </AnimatePresence>
-            </div>
-        </div>
-    )
-}
-
-// Add missing Avatar component
-function Avatar({
-    className,
-    children,
-    ...props
-}: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) {
-    return (
-        <div className={`relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full ${className}`} {...props}>
-            {children}
-        </div>
-    )
-}
-
-function AvatarImage({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
-    return (
-        <img src={src || "/placeholder.svg"} alt={alt} className="aspect-square h-full w-full object-cover" {...props} />
-    )
-}
-
-function AvatarFallback({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-    return (
-        <div className="flex h-full w-full items-center justify-center rounded-full bg-muted" {...props}>
-            {children}
-        </div>
+                </>
+            )}
+        </Box>
     )
 }
 

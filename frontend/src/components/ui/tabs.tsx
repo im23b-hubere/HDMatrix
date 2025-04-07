@@ -40,3 +40,21 @@ export const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>
     );
   }
 );
+
+interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
+  value: string;
+}
+
+export const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
+  ({ className, value, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        role="tabpanel"
+        data-state={value ? "active" : "inactive"}
+        className={`mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${className}`}
+        {...props}
+      />
+    );
+  }
+);

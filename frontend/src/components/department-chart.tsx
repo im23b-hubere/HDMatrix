@@ -6,7 +6,8 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const data = {
+// Standarddaten als Fallback
+const defaultData = {
   labels: ['IT', 'Marketing', 'Sales', 'HR', 'Finance'],
   datasets: [
     {
@@ -43,7 +44,19 @@ const options = {
   },
 };
 
-export function DepartmentChart() {
+interface DepartmentChartProps {
+  data?: {
+    labels: string[];
+    datasets: {
+      data: number[];
+      backgroundColor: string[];
+      borderColor: string[];
+      borderWidth: number;
+    }[];
+  };
+}
+
+export function DepartmentChart({ data = defaultData }: DepartmentChartProps) {
   return (
     <div className="w-full h-full">
       <Doughnut data={data} options={options} />

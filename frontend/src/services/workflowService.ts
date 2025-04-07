@@ -8,7 +8,8 @@ import {
   Notification 
 } from '../types/workflow';
 
-const API_URL = 'http://localhost:5000/api/workflow';
+// Verwende die API-URL entsprechend dem Backend
+const API_URL = '/api/workflow';
 
 // Service-Methoden
 export const getAllWorkflows = async (): Promise<Workflow[]> => {

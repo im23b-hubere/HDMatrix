@@ -25,6 +25,8 @@ import SettingsPage from './pages/SettingsPage';
 import EmployeesPage from './pages/EmployeesPage';
 import SearchPage from './pages/SearchPage';
 import CVUploadPage from './pages/CVUploadPage';
+import WorkflowsPage from './pages/WorkflowsPage';
+import WorkflowDetailPage from './pages/WorkflowDetailPage';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
@@ -71,6 +73,7 @@ function App() {
             <Route element={<MainLayout />}>
               <Route path="/" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} />
               <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} />
+              <Route path="/cvs" element={isAuthenticated ? <CVsPage /> : <Navigate to="/login" />} />
               <Route path="/cvs/:id" element={isAuthenticated ? <CVDetailPage /> : <Navigate to="/login" />} />
               <Route path="/cvs/edit/:id" element={isAuthenticated ? <CVEditPage /> : <Navigate to="/login" />} />
               <Route path="/cvs/new" element={isAuthenticated ? <CVEditPage /> : <Navigate to="/login" />} />
@@ -78,6 +81,8 @@ function App() {
               <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/login" />} />
               <Route path="/search" element={isAuthenticated ? <SearchPage /> : <Navigate to="/login" />} />
               <Route path="/cv/upload" element={isAuthenticated ? <CVUploadPage /> : <Navigate to="/login" />} />
+              <Route path="/workflows" element={isAuthenticated ? <WorkflowsPage /> : <Navigate to="/login" />} />
+              <Route path="/workflows/:id" element={isAuthenticated ? <WorkflowDetailPage /> : <Navigate to="/login" />} />
             </Route>
           </Routes>
         </Router>

@@ -1,0 +1,20 @@
+{
+  "database": {
+    "development": {
+      "dbname": "hrmatrixdb",
+      "user": "postgres",
+      "password": "Steinadler17",
+      "host": "localhost",
+      "port": "5432",
+      "options": "-c client_encoding=latin1"
+    },
+    "production": {
+      "dbname": "hrmatrixdb",
+      "user": "postgres",
+      "password": "${DB_PASSWORD}",
+      "host": "${DB_HOST}",
+      "port": "5432",
+      "options": "-c client_encoding=latin1"
+    }
+  }
+}
