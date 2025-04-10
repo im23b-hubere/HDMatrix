@@ -1,44 +1,41 @@
 import axios from 'axios';
 import { CV } from '../types/cv';
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+interface OllamaResponse {
+  response: string;
+  model: string;
+  created_at: string;
+  done: boolean;
+}
 
 export class AIService {
+  private readonly OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+
   /**
-   * Extrahiert strukturierte CV-Daten aus einem Text
+   * Extrahiert CV-Daten aus einem Text
    * @param text Der zu analysierende Text
-   * @returns Strukturierte CV-Daten
+   * @returns Extrahiertes CV
    */
   async extractCVFromText(text: string): Promise<CV> {
     try {
       const prompt = `
-        Analysiere den folgenden Lebenslauf-Text und extrahiere die relevanten Informationen in ein strukturiertes JSON-Format.
-        Das JSON sollte folgende Struktur haben:
-        {
-          "personalInfo": {
-            "firstName": "",
-            "lastName": "",
-            "email": "",
-            "phone": "",
-            "address": "",
-            "title": "",
-            "summary": ""
-          },
-          "workExperience": [],
-          "education": [],
-          "certifications": [],
-          "skills": [],
-          "languages": [],
-          "projects": []
-        }
+        Analysiere den folgenden Text und extrahiere die CV-Daten.
+        Formatiere die Antwort als JSON-Objekt mit den folgenden Feldern:
+        - personalInfo: { firstName, lastName, email, phone, address, title, summary }
+        - workExperience: Array von { company, position, startDate, endDate, description }
+        - education: Array von { institution, degree, field, startDate, endDate, grade }
+        - certifications: Array von { name, issuer, date }
+        - skills: Array von Strings
+        - languages: Array von { language, level }
+        - projects: Array von { name, description, technologies }
 
-        Lebenslauf-Text:
+        Text:
         ${text}
 
-        Antworte NUR mit dem JSON, keine zusätzlichen Erklärungen.
+        Antworte NUR mit dem JSON-Objekt, keine zusätzlichen Erklärungen.
       `;
 
-      const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
+      const response = await axios.post<OllamaResponse>(`${this.OLLAMA_URL}/api/generate`, {
         model: "mistral",
         prompt: prompt,
         stream: false
@@ -70,7 +67,7 @@ export class AIService {
         Antworte NUR mit dem verbesserten JSON, keine zusätzlichen Erklärungen.
       `;
 
-      const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
+      const response = await axios.post<OllamaResponse>(`${this.OLLAMA_URL}/api/generate`, {
         model: "mistral",
         prompt: prompt,
         stream: false

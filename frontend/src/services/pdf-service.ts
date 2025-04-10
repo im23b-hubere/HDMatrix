@@ -18,17 +18,26 @@ export const pdfService = {
                 throw new Error('Die PDF-Datei ist zu groß. Maximale Größe: 10MB');
             }
             
+            // Überprüfe Dateityp
+            if (!file.type.includes('pdf')) {
+                throw new Error('Nur PDF-Dateien sind erlaubt');
+            }
+            
             const formData = new FormData();
             formData.append('file', file);
 
+            console.log('Sende Anfrage an:', `${API_BASE_URL}/api/pdf/extract`);
+            
             const response = await axios.post(`${API_BASE_URL}/api/pdf/extract`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 },
-                timeout: 60000 // 60 Sekunden Timeout für PDF-Extraktion
+                timeout: 60000, // 60 Sekunden Timeout für PDF-Extraktion
+                maxContentLength: 10 * 1024 * 1024 // 10MB max
             });
 
             if (!response.data.text) {
+                console.error('Kein Text in der Antwort:', response.data);
                 throw new Error('Kein Text aus PDF extrahiert');
             }
 
@@ -42,6 +51,12 @@ export const pdfService = {
                 }
                 if (error.code === 'ECONNABORTED') {
                     throw new Error('Zeitüberschreitung bei der PDF-Extraktion');
+                }
+                if (error.response?.status === 400) {
+                    throw new Error(error.response.data?.error || 'Fehler beim Extrahieren des PDF-Texts');
+                }
+                if (error.response?.status === 500) {
+                    throw new Error('Server-Fehler bei der PDF-Extraktion');
                 }
                 throw new Error(error.response?.data?.error || 'Fehler beim Extrahieren des PDF-Texts');
             }

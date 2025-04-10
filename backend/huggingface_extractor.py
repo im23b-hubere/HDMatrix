@@ -16,8 +16,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Standard-Modell für die Extraktion
-# Verwende ein leistungsfähigeres Modell für komplexe Extraktionsaufgaben
-model_id = "mistralai/Mistral-7B-Instruct-v0.2"  # Stärkeres Modell für Textextraktion
+# Verwende ein kostenloses Modell für die CV-Extraktion
+model_id = "facebook/bart-large-cnn"  # Kostenloses Modell für Textextraktion und Zusammenfassung
 
 class HuggingFaceExtractor:
     """Extractor zur Nutzung der HuggingFace API zur Extraktion von CV-Daten"""
@@ -64,73 +64,139 @@ class HuggingFaceExtractor:
             
             # Prompt für die Extraktion der CV-Daten - Format für Mistral-Modell angepasst
             prompt = f"""<s>[INST]
-            Extrahiere die folgenden Informationen aus dem Lebenslauf und gib sie im JSON-Format zurück:
-            - name: vollständiger Name
-            - email: E-Mail-Adresse
-            - phone: Telefonnummer
-            - address: vollständige Adresse
-            - skills: Liste von Fähigkeiten
-            - work_experience: Liste von Arbeitserfahrungen mit position, company, start_date, end_date, description
-            - education: Liste von Ausbildungen mit degree, institution, start_date, end_date
-            - languages: Liste von Sprachen mit language, proficiency
-            - summary: Zusammenfassung/Profil
-            - projects: Liste von Projekten mit name, description, technologies
+            Du bist ein Experte für die Analyse deutscher Lebensläufe. Extrahiere präzise die folgenden Informationen aus dem Lebenslauf und gib sie im JSON-Format zurück.
+            Achte besonders auf:
+            - Deutsche Datumsformate und Zeitangaben
+            - Deutsche Bildungsabschlüsse (z.B. Abitur, Bachelor, Master, Promotion)
+            - Deutsche Berufsbezeichnungen
+            - Typisch deutsche Formulierungen und Strukturen in Lebensläufen
+
+            Extrahiere diese Informationen:
+            1. Persönliche Daten:
+               - name: Vor- und Nachname
+               - email: E-Mail-Adresse
+               - phone: Telefonnummer (deutsche Format)
+               - address: Vollständige Adresse
+
+            2. Beruflicher Werdegang (work_experience):
+               - Genaue Position/Rolle
+               - Firma/Unternehmen
+               - Zeitraum (Beginn und Ende)
+               - Detaillierte Beschreibung der Tätigkeiten
+               - Verantwortlichkeiten und Erfolge
+
+            3. Ausbildung (education):
+               - Art des Abschlusses (z.B. Abitur, Bachelor, Master)
+               - Bildungseinrichtung
+               - Zeitraum
+               - Schwerpunkte/Vertiefungen
+               - Abschlussnote falls angegeben
+
+            4. Fähigkeiten (skills):
+               - Technische Fähigkeiten
+               - Programmiersprachen
+               - Frameworks und Tools
+               - Methoden (z.B. Scrum, Kanban)
+               - Soft Skills
+
+            5. Sprachen (languages):
+               - Sprache
+               - Niveau nach europäischem Referenzrahmen (A1-C2)
+
+            6. Projekte (projects):
+               - Projektname
+               - Detaillierte Beschreibung
+               - Eingesetzte Technologien
+               - Rolle im Projekt
+               - Ergebnisse/Erfolge
 
             Hier ist der Lebenslauf:
             
             {cv_text}
             
-            Gib deine Antwort nur im folgenden JSON-Format zurück ohne Markdown-Format oder andere Formatierungen:
+            Formatiere die Antwort EXAKT in diesem JSON-Format:
             {{
-                "name": "",
-                "email": "",
-                "phone": "",
-                "address": "",
-                "skills": [],
+                "name": "Vorname Nachname",
+                "email": "email@domain.de",
+                "phone": "+49 123 45678",
+                "address": "Straße Nr, PLZ Ort",
+                "skills": [
+                    {{
+                        "category": "Programmiersprachen",
+                        "items": ["Python", "Java", "JavaScript"]
+                    }},
+                    {{
+                        "category": "Frameworks",
+                        "items": ["React", "Angular", "Spring"]
+                    }},
+                    {{
+                        "category": "Methoden",
+                        "items": ["Scrum", "Kanban"]
+                    }}
+                ],
                 "work_experience": [
                     {{
-                        "position": "",
-                        "company": "",
-                        "start_date": "",
-                        "end_date": "",
-                        "description": ""
+                        "position": "Senior Entwickler",
+                        "company": "Firma GmbH",
+                        "start_date": "01.2020",
+                        "end_date": "heute",
+                        "description": "Detaillierte Beschreibung",
+                        "responsibilities": ["Verantwortung 1", "Verantwortung 2"],
+                        "achievements": ["Erfolg 1", "Erfolg 2"]
                     }}
                 ],
                 "education": [
                     {{
-                        "degree": "",
-                        "institution": "",
-                        "start_date": "",
-                        "end_date": ""
+                        "degree": "Master of Science",
+                        "institution": "Universität",
+                        "start_date": "10.2018",
+                        "end_date": "09.2020",
+                        "focus": "Schwerpunkt",
+                        "grade": "1,3"
                     }}
                 ],
                 "languages": [
                     {{
-                        "language": "",
-                        "proficiency": ""
+                        "language": "Deutsch",
+                        "proficiency": "Muttersprache"
+                    }},
+                    {{
+                        "language": "Englisch",
+                        "proficiency": "C1"
                     }}
                 ],
-                "summary": "",
                 "projects": [
                     {{
-                        "name": "",
-                        "description": "",
-                        "technologies": []
+                        "name": "Projektname",
+                        "description": "Detaillierte Beschreibung",
+                        "technologies": ["Tech1", "Tech2"],
+                        "role": "Projektrolle",
+                        "achievements": ["Ergebnis 1", "Ergebnis 2"]
                     }}
                 ]
             }}
+            
+            WICHTIG:
+            - Extrahiere ALLE verfügbaren Informationen
+            - Behalte das exakte JSON-Format bei
+            - Verwende deutsche Datumsformate (MM.YYYY)
+            - Kategorisiere die Skills sinnvoll
+            - Füge leere Arrays [] ein, wenn keine Daten verfügbar sind
+            - Setze "heute" als end_date bei aktuellen Positionen
             [/INST]</s>
             """
             
-            # API-Anfrage - Parameter für Mistral angepasst
+            # API-Anfrage - Parameter für BART angepasst
             payload = {
                 "inputs": prompt,
                 "parameters": {
-                    "max_new_tokens": 2048,
-                    "temperature": 0.1,
-                    "top_p": 0.95,
-                    "do_sample": True,
-                    "return_full_text": False
+                    "max_length": 1024,        # Maximale Länge der Ausgabe
+                    "min_length": 512,         # Minimale Länge für vollständige Extraktion
+                    "length_penalty": 2.0,     # Bevorzugt längere Antworten
+                    "num_beams": 4,            # Beam Search für bessere Qualität
+                    "temperature": 0.7,        # Moderate Kreativität
+                    "no_repeat_ngram_size": 3, # Verhindert Wiederholungen
+                    "early_stopping": True     # Stoppt wenn fertig
                 }
             }
             

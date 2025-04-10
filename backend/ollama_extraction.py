@@ -131,158 +131,61 @@ class OllamaExtractor:
 
     def extract_cv(self, text: str) -> Dict[str, Any]:
         """
-        Extrahiert Informationen aus einem Lebenslauf-Text mit Ollama.
+        Extrahiert Informationen aus einem CV-Text.
         
         Args:
-            text (str): Der zu analysierende Lebenslauf-Text
+            text (str): Der CV-Text
             
         Returns:
-            Dict[str, Any]: Extrahierten Informationen im strukturierten Format
+            Dict[str, Any]: Extrahierten Informationen
         """
-        logger.debug(f"Starte Extraktion mit Text: {text[:100]}...")
-        
-        # Wenn der Text zu lang ist, kürzen wir ihn für bessere Ergebnisse
-        max_text_length = 4000  # Modellabhängig, für Mistral sollten 4000 Zeichen ausreichen
-        if len(text) > max_text_length:
-            logger.info(f"Text ist zu lang ({len(text)} Zeichen), kürze auf {max_text_length} Zeichen")
-            # Behalte den Anfang und das Ende des Textes
-            text = text[:max_text_length//2] + "\n...\n" + text[-max_text_length//2:]
-        
-        prompt = f"""[INST]Du bist ein KI-Assistent, der Lebensläufe analysiert. 
-        Extrahiere die wichtigsten Informationen aus dem folgenden Lebenslauf und gib sie in einem strukturierten JSON-Format zurück.
-        
-        Wichtige Regeln:
-        1. Gib NUR valides JSON zurück, KEINE Kommentare
-        2. Verwende "null" für fehlende Informationen, aber füge KEINE Kommentare hinzu
-        3. Formatiere die Antwort NICHT als Markdown-Code-Block
-        4. Die Schlüsselnamen müssen genau so sein wie im Beispielformat angegeben
-        5. EXTRAHIERE NUR ECHTE DATEN, KEINE FELDNAMEN. Beispiel: Aus "Email: max@example.com" extrahiere nur "max@example.com"
-        
-        Extrahiere nur echte Daten aus dem Lebenslauf, KEINE Formularfelder oder Beschriftungen wie "Vorname", "Email", usw.
-        
-        Antworte im folgenden Format:
-        {{
-            "personal_data": {{
-                "vorname": "string",
-                "nachname": "string",
-                "email": "string",
-                "telefon": "string",
-                "adresse": "string"
-            }},
-            "education": [
-                {{
-                    "institution": "string",
-                    "abschluss": "string",
-                    "fachrichtung": "string",
-                    "zeitraum": "string",
-                    "ort": "string"
-                }}
-            ],
-            "experience": [
-                {{
-                    "firma": "string",
-                    "position": "string",
-                    "zeitraum": "string",
-                    "ort": "string",
-                    "beschreibung": "string"
-                }}
-            ],
-            "skills": {{
-                "technische_skills": ["string"],
-                "soft_skills": ["string"],
-                "sprachen": ["string"]
-            }}
-        }}
-        
-        Lebenslauf:
-        {text}[/INST]"""
-        
-        for attempt in range(self.max_retries):
-            try:
-                logger.info(f"Sende Anfrage an Ollama (Versuch {attempt + 1}/{self.max_retries})...")
+        try:
+            # Bereite den Prompt vor
+            prompt = f"""Analysiere den folgenden Lebenslauf und extrahiere die wichtigsten Informationen im JSON-Format.
+            Verwende KEINE Feldbezeichnungen wie "Name:", "Email:" etc. in den Werten.
+            Formatiere die Antwort als JSON-Objekt mit folgenden Feldern:
+            - name: Vollständiger Name
+            - email: E-Mail-Adresse
+            - phone: Telefonnummer
+            - address: Adresse
+            - skills: Liste der Fähigkeiten
+            - work_experience: Liste der Berufserfahrungen
+            - education: Liste der Ausbildungen
+            - languages: Liste der Sprachen
+            - projects: Liste der Projekte
+
+            Lebenslauf:
+            {text}
+
+            Antworte NUR mit dem JSON-Objekt, ohne weitere Erklärungen."""
+
+            # Sende Anfrage an Ollama
+            response = self._make_request(prompt)
+            
+            if response:
+                # Bereinige die Antwort
+                cleaned_response = self.clean_json_response(response)
                 
-                try:
-                    # Ollama-Anfrage mit Timeout
-                    start_time = time.time()
-                    response = ollama.chat(model=self.model, messages=[
-                        {
-                            'role': 'user',
-                            'content': prompt
-                        }
-                    ])
-                    elapsed_time = time.time() - start_time
-                    logger.info(f"Antwort von Ollama erhalten in {elapsed_time:.2f} Sekunden")
-                    
-                    logger.debug(f"Erhaltene Antwort: {response}")
-                    
-                    # Extrahiere die JSON-Antwort aus der Ollama-Antwort
-                    response_text = response['message']['content']
-                    logger.debug(f"Extrahierter Text: {response_text}")
-                    
-                    # Bereinige die Antwort
-                    cleaned_text = self.clean_json_response(response_text)
-                    logger.debug(f"Bereinigter Text: {cleaned_text}")
-                    
-                    # Versuche die Antwort als JSON zu parsen
+                # Extrahiere JSON aus der Antwort
+                json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+                
+                if json_match:
                     try:
-                        extracted_data = json.loads(cleaned_text)
-                        logger.info("JSON erfolgreich geparst")
-                        
-                        # Bereinige die extrahierten Daten von Feldbezeichnungen
-                        extracted_data = self.remove_field_labels(extracted_data)
-                        logger.info("Feldbezeichnungen wurden entfernt")
-                        
-                        return extracted_data
-                    except json.JSONDecodeError as je:
-                        logger.error(f"JSON Parsing Fehler: {str(je)}")
-                        # Erweiterte Fehlersuche für JSON-Fehler
-                        logger.error(f"Problematische Stelle im JSON: {cleaned_text[max(0, je.pos-20):min(len(cleaned_text), je.pos+20)]}")
-                        
-                        # Bei JSON-Fehler, versuche es erneut, außer beim letzten Versuch
-                        if attempt < self.max_retries - 1:
-                            logger.info(f"Versuche es erneut in 2 Sekunden...")
-                            time.sleep(2)
-                            continue
-                        
-                        return {
-                            "error": "JSON Parsing Fehler",
-                            "raw_response": cleaned_text,
-                            "status": "failed"
-                        }
-                    
-                except Exception as e:
-                    logger.error(f"Ollama API Fehler: {str(e)}")
-                    
-                    # Bei API-Fehler, versuche es erneut, außer beim letzten Versuch
-                    if attempt < self.max_retries - 1:
-                        logger.info(f"Versuche es erneut in 3 Sekunden...")
-                        time.sleep(3)
-                        continue
-                    
-                    return {
-                        "error": f"Ollama API Fehler: {str(e)}",
-                        "status": "failed"
-                    }
+                        extracted_data = json.loads(json_match.group(1))
+                    except json.JSONDecodeError:
+                        raise ValueError("Konnte kein gültiges JSON aus der Antwort extrahieren")
+                else:
+                    raise ValueError("Konnte kein JSON-Objekt in der Antwort finden")
                 
-            except Exception as e:
-                logger.error(f"Fehler bei der Extraktion: {str(e)}")
+                # Entferne Feldbezeichnungen
+                extracted_data = self.remove_field_labels(extracted_data)
                 
-                # Bei allgemeinem Fehler, versuche es erneut, außer beim letzten Versuch
-                if attempt < self.max_retries - 1:
-                    logger.info(f"Versuche es erneut in 3 Sekunden...")
-                    time.sleep(3)
-                    continue
-                
-                return {
-                    "error": str(e),
-                    "status": "failed"
-                }
-        
-        # Wenn alle Versuche fehlschlagen
-        return {
-            "error": "Maximale Anzahl an Versuchen erreicht",
-            "status": "failed"
-        }
+                logger.info(f"Erfolgreich CV-Daten extrahiert für: {extracted_data.get('name', 'Unbekannt')}")
+                return extracted_data
+            
+        except Exception as e:
+            logger.error(f"Fehler bei der Ollama-Extraktion: {str(e)}")
+            raise
 
     def extract_from_file(self, file_path: str) -> Dict[str, Any]:
         """

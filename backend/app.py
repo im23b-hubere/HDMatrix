@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 import json
 import PyPDF2
 import docx
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import re
 import uuid
 import requests
@@ -21,12 +21,18 @@ from db.db_service import get_db_connection, create_tables, create_default_tenan
 from routes.auth_routes import auth_routes
 from routes.workflow_routes import workflow_bp
 from routes.cv_routes import cv_upload_bp
+from huggingface_extraction import HuggingFaceExtractor
+
+from nltk_extraction import NLTKExtractor
 
 # Lade Umgebungsvariablen
 load_dotenv()
 
 # Logging-Konfiguration
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Import Workflow Routes
@@ -180,198 +186,185 @@ DB_CONFIG = {
 
 # Initialisiere CV-Extraktor
 cv_extractor = CVExtractor()
+huggingface_extractor = HuggingFaceExtractor()
+ollama_extractor = OllamaExtractor()
+nltk_extractor = NLTKExtractor()
 
-def get_db_connection():
-    try:
-        # Erstelle die Verbindungszeichenfolge mit Standardwerten
-        dsn_params = {
-            'dbname': DB_CONFIG['dbname'],
-            'user': DB_CONFIG['user'],
-            'password': DB_CONFIG['password'],
-            'host': DB_CONFIG['host'], 
-            'port': DB_CONFIG['port']
-        }
+def validate_extraction_result(result: Dict[str, Any]) -> bool:
+    """
+    Validiert das Ergebnis der Extraktion.
+    
+    Args:
+        result: Das zu validierende Ergebnis
         
-        # Debugging: Zeige die DSN-Parameter an (ohne Passwort)
-        safe_params = dsn_params.copy()
-        safe_params['password'] = '***'
-        print(f"DSN Parameter: {safe_params}")
-        
-        try:
-            logger.info(f"Versuche Verbindung zu Datenbank: {DB_CONFIG['dbname']} auf {DB_CONFIG['host']}:{DB_CONFIG['port']}")
-            
-            # Setze die Kodierung direkt beim Verbindungsaufbau
-            conn = psycopg2.connect(**dsn_params, client_encoding='UTF8')
-            logger.info("Datenbankverbindung erfolgreich hergestellt")
-            return conn
-        except UnicodeDecodeError as ude:
-            # Bei Kodierungsproblemen versuche nochmal mit alternativer Kodierung
-            print(f"Unicode-Dekodierungsfehler: {ude}")
-            
-            # Versuche den problematischen Teil aus der Fehlermeldung zu extrahieren
-            if hasattr(ude, 'object') and isinstance(ude.object, bytes):
-                error_bytes = ude.object
-                try:
-                    # Versuche mit Windows-Kodierung zu decodieren
-                    error_msg = error_bytes.decode('cp1252', errors='replace')
-                    print(f"Fehlermeldung (cp1252): {error_msg}")
-                except Exception:
-                    pass
-            
-            # Versuche es mit anderer Kodierung
-            print("Versuche Verbindung mit Windows-Kodierung (cp1252)...")
-            conn = psycopg2.connect(**dsn_params, client_encoding='WIN1252')
-            return conn
-    except psycopg2.Error as e:
-        error_msg = str(e)
-        # Versuche, die Fehlermeldung lesbarer zu machen
-        if isinstance(error_msg, bytes):
-            try:
-                error_msg = error_msg.decode('cp1252', errors='replace')
-            except:
-                pass
-        logger.error(f"Datenbankverbindungsfehler: {error_msg}")
-        return None
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def check_ollama_status():
-    """Überprüft, ob Ollama läuft und erreichbar ist"""
-    try:
-        response = requests.get('http://localhost:11434/api/tags', timeout=5)
-        return response.status_code == 200
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Ollama Status Check fehlgeschlagen: {str(e)}")
+    Returns:
+        bool: True wenn das Ergebnis valide ist, sonst False
+    """
+    if not isinstance(result, dict):
         return False
 
-def get_ollama_response(prompt: str, text: str, max_retries: int = 3) -> str:
-    """Holt eine Antwort von Ollama mit Wiederholungsversuchen"""
-    for attempt in range(max_retries):
-        try:
-            if attempt > 0:
-                time.sleep(2)
-                
-            # Reduziere die Textlänge wenn nötig
-            max_text_length = 4000
-            if len(text) > max_text_length:
-                text = text[:max_text_length]
-                logger.warning(f"Text wurde auf {max_text_length} Zeichen gekürzt")
-                
-            response = requests.post(
-                'http://localhost:11434/api/generate',
-                json={
-                    'model': 'mistral',
-                    'prompt': f"{prompt}\n\nText:\n{text}",
-                    'stream': False,
-                    'options': {
-                        'temperature': 0.1,  # Sehr niedrige Temperatur für konsistentere Antworten
-                        'top_p': 0.1,       # Sehr niedriger top_p Wert
-                        'num_predict': 512,  # Kürzere Vorhersage
-                        'num_ctx': 2048,     # Kleinerer Kontext
-                        'stop': ["}"],       # Stoppe nach dem schließenden JSON
-                        'num_thread': 4,     # Standard Thread-Anzahl
-                        'repeat_penalty': 1.2,  # Verhindere Wiederholungen
-                        'seed': 42           # Fester Seed für konsistentere Ergebnisse
-                    }
-                },
-                timeout=30  # Kurzer Timeout von 30 Sekunden
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Ollama API Fehler: {response.status_code} - {response.text}")
-                raise ConnectionError(f"Ollama API Fehler: {response.status_code}")
-                
-            result = response.json().get('response', '')
-            if not result:
-                raise ValueError("Keine Antwort von Ollama erhalten")
-                
-            # Stelle sicher, dass wir ein vollständiges JSON haben
-            if not result.strip().endswith('}'):
-                result += '}'
-                
-            # Versuche das JSON zu parsen
-            try:
-                json.loads(result)
-                return result
-            except json.JSONDecodeError:
-                raise ValueError("Ungültiges JSON von Ollama erhalten")
-            
-        except requests.exceptions.Timeout:
-            if attempt == max_retries - 1:
-                raise TimeoutError("Zeitüberschreitung bei der KI-Verarbeitung")
-            logger.warning(f"Timeout bei Versuch {attempt + 1}, versuche erneut...")
-        except requests.exceptions.RequestException as e:
-            if attempt == max_retries - 1:
-                raise ConnectionError(f"Verbindungsfehler bei der KI-Verarbeitung: {str(e)}")
-            logger.warning(f"Verbindungsfehler bei Versuch {attempt + 1}, versuche erneut...")
-            
-    raise Exception("Maximale Anzahl von Wiederholungsversuchen erreicht")
+    # Prüfe ob mindestens einige wichtige Felder vorhanden sind
+    required_fields = ['name', 'email', 'skills', 'work_experience']
+    return all(field in result for field in required_fields)
 
-@app.route('/api/pdf/extract', methods=['POST', 'OPTIONS'])
-def extract_text_from_upload():
-    if request.method == 'OPTIONS':
-        return '', 204
+def merge_extraction_results(results: list[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Führt mehrere Extraktionsergebnisse zusammen.
+    
+    Args:
+        results: Liste der Extraktionsergebnisse
         
+    Returns:
+        Dict mit zusammengeführten Ergebnissen
+    """
+    merged = {
+        'name': '',
+        'email': '',
+        'phone': '',
+        'address': '',
+        'skills': [],
+        'work_experience': [],
+        'education': [],
+        'languages': [],
+        'projects': []
+    }
+    
+    for result in results:
+        if not validate_extraction_result(result):
+            continue
+            
+        # Persönliche Daten
+        if result.get('name') and not merged['name']:
+            merged['name'] = result['name']
+        if result.get('email') and not merged['email']:
+            merged['email'] = result['email']
+        if result.get('phone') and not merged['phone']:
+            merged['phone'] = result['phone']
+        if result.get('address') and not merged['address']:
+            merged['address'] = result['address']
+            
+        # Skills
+        if result.get('skills'):
+            for skill_group in result['skills']:
+                if skill_group not in merged['skills']:
+                    merged['skills'].append(skill_group)
+                    
+        # Berufserfahrung
+        if result.get('work_experience'):
+            for exp in result['work_experience']:
+                if exp not in merged['work_experience']:
+                    merged['work_experience'].append(exp)
+                    
+        # Ausbildung
+        if result.get('education'):
+            for edu in result['education']:
+                if edu not in merged['education']:
+                    merged['education'].append(edu)
+                    
+        # Sprachen
+        if result.get('languages'):
+            for lang in result['languages']:
+                if lang not in merged['languages']:
+                    merged['languages'].append(lang)
+                    
+        # Projekte
+        if result.get('projects'):
+            for proj in result['projects']:
+                if proj not in merged['projects']:
+                    merged['projects'].append(proj)
+                    
+    return merged
+
+@app.route('/api/extract', methods=['POST'])
+def extract_cv():
+    """
+    Extrahiert Informationen aus einem hochgeladenen PDF.
+    """
     try:
-        logger.info("PDF-Extraktion gestartet")
         if 'file' not in request.files:
-            logger.error("Keine Datei in request.files gefunden")
-            return jsonify({'error': 'Keine Datei hochgeladen'}), 400
+            return jsonify({'error': 'Keine Datei gefunden'}), 400
             
         file = request.files['file']
-        logger.info(f"Datei empfangen: {file.filename}")
-        
         if file.filename == '':
-            logger.error("Leerer Dateiname")
             return jsonify({'error': 'Keine Datei ausgewählt'}), 400
             
         if not file.filename.lower().endswith('.pdf'):
-            logger.error("Keine PDF-Datei")
             return jsonify({'error': 'Nur PDF-Dateien sind erlaubt'}), 400
 
-        # Generiere einen eindeutigen Dateinamen
-        filename = secure_filename(f"{uuid.uuid4()}_{file.filename}")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        logger.info(f"Speichere Datei unter: {filepath}")
-        
-        try:
             # Speichere die Datei temporär
-            file.save(filepath)
-            logger.info("Datei erfolgreich gespeichert")
+        temp_path = os.path.join('temp', file.filename)
+        os.makedirs('temp', exist_ok=True)
+        file.save(temp_path)
             
+        try:
             # Extrahiere Text aus PDF
-            text = ""
-            with open(filepath, 'rb') as pdf_file:
-                reader = PyPDF2.PdfReader(pdf_file)
-                logger.info(f"PDF hat {len(reader.pages)} Seiten")
-                for page in reader.pages:
-                    text += page.extract_text() + "\n"
-
-            if not text or text.isspace():
-                logger.error("Kein Text aus PDF extrahiert")
+            text = extract_text_from_pdf(temp_path)
+            if not text:
                 return jsonify({'error': 'Konnte keinen Text aus der PDF extrahieren'}), 400
 
-            # Bereinige den Text
-            text = text.strip()
-            text = re.sub(r'\s+', ' ', text)
-            text = text.replace('\x00', '')
-            logger.info(f"Extrahierter Text (erste 100 Zeichen): {text[:100]}...")
-
-            return jsonify({'text': text})
+            # Versuche die Extraktion mit verschiedenen Methoden
+            results = []
+            
+            # 1. HuggingFace (wenn verfügbar) - DEAKTIVIERT
+            # if os.getenv('USE_HUGGINGFACE', 'false').lower() == 'true':
+            #     try:
+            #         hf_result = huggingface_extractor.extract_cv(text)
+            #         if validate_extraction_result(hf_result):
+            #             results.append(hf_result)
+            #             logger.info("HuggingFace Extraktion erfolgreich")
+            #     except Exception as e:
+            #         logger.error(f"HuggingFace Extraktion fehlgeschlagen: {str(e)}")
+                    
+            # 2. Ollama (lokale Option)
+            try:
+                ollama_result = ollama_extractor.extract_cv(text)
+                if validate_extraction_result(ollama_result):
+                    results.append(ollama_result)
+                    logger.info("Ollama Extraktion erfolgreich")
+            except Exception as e:
+                logger.error(f"Ollama Extraktion fehlgeschlagen: {str(e)}")
+                
+            # 3. NLTK als Fallback
+            try:
+                nltk_result = nltk_extractor.extract_cv(text)
+                if validate_extraction_result(nltk_result):
+                    results.append(nltk_result)
+                    logger.info("NLTK Extraktion erfolgreich")
+            except Exception as e:
+                logger.error(f"NLTK Extraktion fehlgeschlagen: {str(e)}")
+                
+            # Wenn keine Extraktion erfolgreich war
+            if not results:
+                return jsonify({
+                    'error': 'Keine der Extraktionsmethoden war erfolgreich',
+                    'status': 'failed'
+                }), 500
+                
+            # Führe die Ergebnisse zusammen
+            final_result = merge_extraction_results(results)
+            
+            # Füge Metadaten hinzu
+            final_result['metadata'] = {
+                'extraction_date': datetime.now().isoformat(),
+                'source_file': file.filename,
+                'methods_used': len(results)
+            }
+            
+            return jsonify(final_result)
 
         finally:
-            # Lösche die temporäre Datei
+            # Lösche temporäre Datei
             try:
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                    logger.info("Temporäre Datei gelöscht")
+                os.remove(temp_path)
             except Exception as e:
-                logger.warning(f"Konnte temporäre Datei nicht löschen: {str(e)}")
+                logger.error(f"Fehler beim Löschen der temporären Datei: {str(e)}")
 
     except Exception as e:
-        logger.error(f"Fehler bei der PDF-Verarbeitung: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Fehler bei der CV-Extraktion: {str(e)}")
+        return jsonify({
+            'error': str(e),
+            'status': 'failed'
+        }), 500
 
 @app.route('/api/employees/search', methods=['GET'])
 def search_employees():
@@ -699,17 +692,40 @@ def extract_text_from_pdf(pdf_path):
     try:
         with open(pdf_path, 'rb') as file:
             reader = PyPDF2.PdfReader(file)
+            
+            # Prüfe ob PDF verschlüsselt ist
+            if reader.is_encrypted:
+                logger.info("PDF ist verschlüsselt, versuche automatische Entschlüsselung")
+                try:
+                    reader.decrypt('')  # Versuche mit leerem Passwort
+                except:
+                    logger.error("PDF konnte nicht entschlüsselt werden")
+                    raise Exception("PDF ist verschlüsselt und konnte nicht entschlüsselt werden")
+            
             text = ""
+            total_pages = len(reader.pages)
+            logger.info(f"PDF hat {total_pages} Seiten")
             
             # Extrahiere Text von jeder Seite
-            for page in reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    # Normalisiere Leerzeichen und Zeilenumbrüche
-                    page_text = re.sub(r'\s+', ' ', page_text)
-                    # Füge Zeilenumbrüche nach bestimmten Schlüsselwörtern ein
-                    page_text = re.sub(r'(?i)(Telefon|Email|Adresse|Ausbildung|Berufserfahrung|Skills|Kenntnisse|Sprachen|Zertifikate|Projekte):', r'\n\1:', page_text)
-                    text += page_text + "\n\n"
+            for i, page in enumerate(reader.pages, 1):
+                try:
+                    page_text = page.extract_text()
+                    if page_text:
+                        # Normalisiere Leerzeichen und Zeilenumbrüche
+                        page_text = re.sub(r'\s+', ' ', page_text)
+                        # Füge Zeilenumbrüche nach bestimmten Schlüsselwörtern ein
+                        page_text = re.sub(r'(?i)(Telefon|Email|Adresse|Ausbildung|Berufserfahrung|Skills|Kenntnisse|Sprachen|Zertifikate|Projekte):', r'\n\1:', page_text)
+                        text += page_text + "\n\n"
+                        logger.info(f"Seite {i}/{total_pages} erfolgreich extrahiert")
+                    else:
+                        logger.warning(f"Keine Text auf Seite {i} gefunden")
+                except Exception as e:
+                    logger.error(f"Fehler beim Extrahieren von Seite {i}: {str(e)}")
+                    continue
+            
+            if not text.strip():
+                logger.error("Kein Text aus PDF extrahiert")
+                raise Exception("Kein Text aus PDF extrahiert")
             
             # Bereinige den Text
             text = re.sub(r'\n\s*\n', '\n', text)  # Entferne mehrfache Leerzeilen
@@ -1187,7 +1203,7 @@ def generate_document(template_id):
         logger.error(f"Fehler bei der Dokumentgenerierung: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/ai/extract-cv', methods=['POST', 'OPTIONS'])
+@app.route('/api/ai/extract-cv', methods=['POST', 'OPTIONS'], endpoint='extract_cv_with_ai')
 def extract_cv():
     if request.method == 'OPTIONS':
         return '', 204
@@ -1202,12 +1218,12 @@ def extract_cv():
         text = data['text']
         logger.info(f"Text zum Verarbeiten (erste 100 Zeichen): {text[:100]}...")
         
-        # Extrahiere CV-Daten mit OpenAI
-        result = cv_extractor.extract_cv_data(text)
+        # Extrahiere CV-Daten mit HuggingFace
+        result = huggingface_extractor.extract_cv_data(text)
         return jsonify(result)
         
     except Exception as e:
-        logger.error(f"Fehler bei der CV-Extraktion: {str(e)}")
+        logger.error(f"Fehler bei der Datenbankverbindung: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ai/enhance-cv', methods=['POST', 'OPTIONS'])
@@ -1399,31 +1415,33 @@ def debug_health():
         "timestamp": datetime.now().isoformat()
     })
 
+@app.route('/api/test-huggingface', methods=['GET'])
+def test_huggingface():
+    # Wieder aktiviert
+    try:
+        result = huggingface_extractor.test_connection()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Fehler beim Testen der HuggingFace-Verbindung: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    # Setze die Standardkodierung für alle Strings
     import sys
     import locale
     
-    # Debugging-Ausgabe zur Zeichenkodierung
     print(f"System-Kodierung: {locale.getpreferredencoding()}")
     print(f"Python-Standardkodierung: {sys.getdefaultencoding()}")
     
-    # Setze die Standardkodierung auf den System-Standardwert
-    # Dies kann helfen, wenn es Probleme mit deutschen Umlauten gibt
     if sys.version_info >= (3, 0):
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     
-    # Nutze einen Try-Block, um Fehler zu erfassen
     try:
-        # Teste Datenbankverbindung
         if test_db_connection():
-            # Starte den Server auf Port 5000
             app.run(host='127.0.0.1', port=5000, debug=True)
         else:
             logger.error("Server konnte nicht gestartet werden: Keine Datenbankverbindung")
     except Exception as e:
-        # Versuche den Fehler in verschiedenen Kodierungen zu decodieren
         error_str = str(e)
         print(f"Originaler Fehler: {error_str}")
         for encoding in ['utf-8', 'latin1', 'cp1252', 'ascii']:
