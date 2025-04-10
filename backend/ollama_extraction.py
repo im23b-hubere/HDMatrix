@@ -269,6 +269,47 @@ class OllamaExtractor:
             logger.warning(f"Nicht unterstützter Dateityp: {file_path}")
             return ""
 
+    def _make_request(self, prompt: str) -> str:
+        """
+        Sendet eine Anfrage an den Ollama-Server.
+        
+        Args:
+            prompt (str): Der Prompt für das Modell
+            
+        Returns:
+            str: Die Antwort des Modells
+        """
+        try:
+            logger.info(f"Sende Anfrage an Ollama mit Modell: {self.model}")
+            
+            # Sende Anfrage an Ollama
+            response = self.client.post(
+                f"{self.base_url}/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "top_p": 0.1,
+                        "num_predict": 4096
+                    }
+                }
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extrahiere den generierten Text
+            generated_text = result.get("response", "")
+            logger.debug(f"Generierter Text: {generated_text[:100]}...")
+            
+            return generated_text
+            
+        except Exception as e:
+            logger.error(f"Fehler bei der Ollama-Anfrage: {str(e)}")
+            raise
+
 def main():
     # Beispiel für die Verwendung
     extractor = OllamaExtractor()
