@@ -63,13 +63,13 @@ export class DatabaseService {
                     }
                 });
                 if (this.DEBUG) console.log('API Response Status:', response.status);
-                
-                if (!response.ok) {
+            
+            if (!response.ok) {
                     console.warn(`API-Fehler: ${response.status} ${response.statusText}`);
                     return this.getMockEmployees(query, filters);
-                }
-                
-                const data = await response.json();
+            }
+            
+            const data = await response.json();
                 if (this.DEBUG) console.log('API Response Data:', data);
                 return {
                     ...data,
@@ -204,14 +204,14 @@ export class DatabaseService {
             if (this.DEBUG) console.log('Lade Abteilungen...');
             
             try {
-                const response = await fetch(`${this.API_BASE_URL}/departments`);
-                if (!response.ok) {
+            const response = await fetch(`${this.API_BASE_URL}/departments`);
+            if (!response.ok) {
                     console.warn('Fehler beim Laden der Abteilungen, verwende Mock-Daten');
                     return this.getMockDepartments();
-                }
-                const data = await response.json();
+            }
+            const data = await response.json();
                 if (this.DEBUG) console.log('Geladene Abteilungen:', data);
-                return data;
+            return data;
             } catch (error) {
                 console.warn('API nicht erreichbar, verwende Mock-Abteilungen:', error);
                 return this.getMockDepartments();
@@ -240,14 +240,14 @@ export class DatabaseService {
             if (this.DEBUG) console.log('Lade Skills...');
             
             try {
-                const response = await fetch(`${this.API_BASE_URL}/skills`);
-                if (!response.ok) {
+            const response = await fetch(`${this.API_BASE_URL}/skills`);
+            if (!response.ok) {
                     console.warn('Fehler beim Laden der Skills, verwende Mock-Daten');
                     return this.getMockSkills();
-                }
-                const data = await response.json();
+            }
+            const data = await response.json();
                 if (this.DEBUG) console.log('Geladene Skills:', data);
-                return data;
+            return data;
             } catch (error) {
                 console.warn('API nicht erreichbar, verwende Mock-Skills:', error);
                 return this.getMockSkills();
@@ -273,9 +273,9 @@ export class DatabaseService {
         try {
             if (this.DEBUG) console.log(`Lade Mitarbeiterdaten für ID ${id}...`);
             
-            try {
-                const response = await fetch(`${this.API_BASE_URL}/employees/${id}`);
-                if (!response.ok) {
+        try {
+            const response = await fetch(`${this.API_BASE_URL}/employees/${id}`);
+            if (!response.ok) {
                     console.warn(`Fehler beim Laden der Mitarbeiterdaten für ID ${id}, verwende Mock-Daten`);
                     return this.getMockEmployees('', {}). employees.find(e => e.id === id) || null;
                 }
@@ -298,7 +298,7 @@ export class DatabaseService {
             
             try {
                 const response = await fetch(`${this.API_BASE_URL}/employees/${employeeId}/skills`);
-                if (!response.ok) {
+            if (!response.ok) {
                     console.warn(`Fehler beim Laden der Skills für Mitarbeiter ID ${employeeId}, verwende Mock-Daten`);
                     return this.getMockEmployees('', {}).employees.find(e => e.id === employeeId)?.skills || [];
                 }

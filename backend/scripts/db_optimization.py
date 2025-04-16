@@ -2,7 +2,7 @@ import psycopg2
 import sys
 
 def get_connection():
-    """Stellt eine Verbindung zur Datenbank her"""
+    """Establish a connection to the database"""
     try:
         conn = psycopg2.connect(
             dbname="hrmatrixdb", 
@@ -10,21 +10,21 @@ def get_connection():
             password="Steinadler17", 
             host="localhost", 
             port="5432",
-            options="-c client_encoding=latin1"
+            options="-c client_encoding=UTF8"
         )
         conn.autocommit = False
         return conn
     except Exception as e:
-        print(f"Fehler bei der Verbindung: {e}")
+        print(f"Connection error: {e}")
         sys.exit(1)
 
 def add_missing_indices():
-    """Fügt fehlende Indizes für bessere Performance hinzu"""
+    """Add missing indices for better performance"""
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        # Tabellen mit Fremdschlüsseln identifizieren
+        # Identify tables with foreign keys
         cursor.execute("""
             SELECT tc.table_name, kcu.column_name
             FROM information_schema.table_constraints tc
@@ -36,7 +36,7 @@ def add_missing_indices():
         
         fk_columns = cursor.fetchall()
         
-        # Prüfen, ob für Fremdschlüssel Indizes existieren
+        # Check if indices exist for foreign keys
         missing_indices = []
         for table, column in fk_columns:
             cursor.execute("""
@@ -48,32 +48,32 @@ def add_missing_indices():
             if not cursor.fetchone():
                 missing_indices.append((table, column))
         
-        # Indizes für fehlende Fremdschlüssel erstellen
+        # Create indices for missing foreign keys
         if missing_indices:
-            print("\nErstelle fehlende Indizes für Fremdschlüssel:")
+            print("\nCreating missing indices for foreign keys:")
             for table, column in missing_indices:
                 index_name = f"idx_{table}_{column}"
                 sql = f"CREATE INDEX {index_name} ON {table}({column})"
                 print(f"- {sql}")
                 cursor.execute(sql)
         else:
-            print("\nAlle Fremdschlüssel sind bereits indiziert.")
+            print("\nAll foreign keys are already indexed.")
         
-        # Spezielle Indizes für häufig abgefragte Spalten
+        # Special indices for frequently queried columns
         special_indices = [
-            # Indizes für Namenssuchen
+            # Indices for name searches
             ("employees", "first_name, last_name", "name_search"),
-            # Indizes für Benutzerauthentifizierung
+            # Indices for user authentication
             ("users", "email", "user_email"),
             ("users", "role_id, is_active", "active_role"),
-            # Tenant Indizes
+            # Tenant indices
             ("tenants", "name", "tenant_search")
         ]
         
-        print("\nErstelle spezielle Indizes für Leistungsoptimierung:")
+        print("\nCreating special indices for performance optimization:")
         for table, columns, suffix in special_indices:
             index_name = f"idx_{table}_{suffix}"
-            # Prüfen, ob Index bereits existiert
+            # Check if index already exists
             cursor.execute("""
                 SELECT 1 FROM pg_indexes 
                 WHERE tablename = %s AND indexname = %s
@@ -85,64 +85,64 @@ def add_missing_indices():
                     print(f"- {sql}")
                     cursor.execute(sql)
                 except Exception as e:
-                    print(f"  Fehler: {str(e)}")
+                    print(f"  Error: {str(e)}")
         
         conn.commit()
-        print("\nIndex-Optimierung abgeschlossen.")
+        print("\nIndex optimization completed.")
         
     except Exception as e:
         conn.rollback()
-        print(f"Fehler bei der Index-Erstellung: {e}")
+        print(f"Error creating indices: {e}")
     finally:
         cursor.close()
         conn.close()
 
 def optimize_constraints():
-    """Prüft und fügt fehlende Constraints hinzu"""
+    """Check and add missing constraints"""
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        # Zu prüfende Constraints
+        # Constraints to check
         constraints = [
-            # Fremdschlüssel für Mitarbeiter
-            "ALTER TABLE mitarbeiter ADD CONSTRAINT fk_mitarbeiter_abteilung FOREIGN KEY (abteilung_id) REFERENCES abteilungen(id) ON DELETE SET NULL",
-            # Fremdschlüssel für Projekte
-            "ALTER TABLE projekterfahrungen ADD CONSTRAINT fk_projekterfahrungen_mitarbeiter FOREIGN KEY (mitarbeiter_id) REFERENCES mitarbeiter(id) ON DELETE CASCADE",
-            # Fremdschlüssel für Weiterbildungen
-            "ALTER TABLE weiterbildungen ADD CONSTRAINT fk_weiterbildungen_mitarbeiter FOREIGN KEY (mitarbeiter_id) REFERENCES mitarbeiter(id) ON DELETE CASCADE",
-            # Fremdschlüssel für Bewertungen
-            "ALTER TABLE bewertungen ADD CONSTRAINT fk_bewertungen_mitarbeiter FOREIGN KEY (mitarbeiter_id) REFERENCES mitarbeiter(id) ON DELETE CASCADE",
-            # Unique Constraints
+            # Foreign keys for employees
+            "ALTER TABLE employees ADD CONSTRAINT fk_employees_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL",
+            # Foreign keys for projects
+            "ALTER TABLE project_experiences ADD CONSTRAINT fk_project_experiences_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE",
+            # Foreign keys for training
+            "ALTER TABLE trainings ADD CONSTRAINT fk_trainings_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE",
+            # Foreign keys for evaluations
+            "ALTER TABLE evaluations ADD CONSTRAINT fk_evaluations_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE",
+            # Unique constraints
             "ALTER TABLE users ADD CONSTRAINT unique_user_email UNIQUE (email)",
-            "ALTER TABLE mitarbeiter ADD CONSTRAINT unique_mitarbeiter_email UNIQUE (email)"
+            "ALTER TABLE employees ADD CONSTRAINT unique_employee_email UNIQUE (email)"
         ]
         
-        print("\nOptimiere Datenbank-Constraints:")
+        print("\nOptimizing database constraints:")
         for constraint in constraints:
             try:
                 cursor.execute(constraint)
                 print(f"- {constraint}")
             except Exception as e:
-                print(f"  Fehler bei '{constraint}': {str(e)}")
+                print(f"  Error with '{constraint}': {str(e)}")
         
         conn.commit()
-        print("\nConstraint-Optimierung abgeschlossen.")
+        print("\nConstraint optimization completed.")
         
     except Exception as e:
         conn.rollback()
-        print(f"Fehler bei der Constraint-Optimierung: {e}")
+        print(f"Error optimizing constraints: {e}")
     finally:
         cursor.close()
         conn.close()
 
 def check_table_structure():
-    """Prüft wichtige Tabellen auf Vollständigkeit"""
+    """Check important tables for completeness"""
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        # Zu prüfende Tabellen und erwartete Spalten
+        # Tables and expected columns to check
         expected_columns = {
             "employees": ["id", "tenant_id", "first_name", "last_name", "email"],
             "cvs": ["id", "employee_id", "file_path", "file_name", "title", "created_at"],
@@ -150,11 +150,11 @@ def check_table_structure():
             "skill_categories": ["id", "name", "description"],
             "cv_skills": ["id", "cv_id", "skill_id", "proficiency_level", "years_of_experience"],
             "users": ["id", "email", "password_hash", "role_id", "tenant_id"],
-            "projekterfahrungen": ["id", "mitarbeiter_id", "projekt_name", "beschreibung", "start_datum", "end_datum"],
-            "weiterbildungen": ["id", "mitarbeiter_id", "titel", "beschreibung", "datum"]
+            "project_experiences": ["id", "employee_id", "project_name", "description", "start_date", "end_date"],
+            "trainings": ["id", "employee_id", "title", "description", "date"]
         }
         
-        print("\nPrüfe Tabellenstrukturen:")
+        print("\nChecking table structures:")
         for table, expected in expected_columns.items():
             cursor.execute("""
                 SELECT column_name 
@@ -165,88 +165,66 @@ def check_table_structure():
             actual_columns = [row[0] for row in cursor.fetchall()]
             
             if not actual_columns:
-                print(f"- Tabelle '{table}' existiert nicht!")
+                print(f"- Table '{table}' does not exist!")
                 continue
                 
             missing = set(expected) - set(actual_columns)
             
             if missing:
-                print(f"- Tabelle '{table}' fehlen Spalten: {', '.join(missing)}")
+                print(f"- Table '{table}' is missing columns: {', '.join(missing)}")
             else:
-                print(f"- Tabelle '{table}' hat alle erwarteten Spalten.")
+                print(f"- Table '{table}' has all expected columns.")
         
     except Exception as e:
-        print(f"Fehler bei der Strukturprüfung: {e}")
+        print(f"Error checking structure: {e}")
     finally:
         cursor.close()
         conn.close()
 
 def optimize_encoding():
-    """Versucht, die Datenbankkodierung anzupassen"""
+    """Try to adjust database encoding"""
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        # Aktuelle Kodierung prüfen
+        # Check current encoding
         cursor.execute("SHOW client_encoding")
         current_encoding = cursor.fetchone()[0]
-        print(f"\nAktuelle Client-Kodierung: {current_encoding}")
+        print(f"\nCurrent client encoding: {current_encoding}")
         
         cursor.execute("SHOW server_encoding")
         server_encoding = cursor.fetchone()[0]
-        print(f"Aktuelle Server-Kodierung: {server_encoding}")
+        print(f"Current server encoding: {server_encoding}")
         
-        # Warnung ausgeben
-        print("\nDie Kodierung kann nicht direkt auf einer existierenden Datenbank geändert werden.")
-        print("Folgende Optionen sind möglich:")
-        print("1. Dump erstellen, neue DB mit UTF8-Kodierung erstellen, Daten reimportieren")
-        print("2. Datenbank-Template ändern für zukünftige DBs")
-        print("3. Weiterhin client_encoding=latin1 verwenden")
-        
-        # Empfehlung für die Codierung
-        print("\nEmpfehlung:")
-        print("Da die Datenbankverbindung jetzt stabil mit latin1 als Client-Encoding funktioniert,")
-        print("empfehlen wir, diese Einstellung beizubehalten und in der Anwendung alle Texte vor")
-        print("dem Speichern entsprechend zu kodieren.")
+        # Output warning
+        print("\nEncoding cannot be changed directly on an existing database.")
+        print("To change the encoding:")
+        print("1. Create a new database with the desired encoding")
+        print("2. Export data from the current database")
+        print("3. Import data into the new database")
         
     except Exception as e:
-        print(f"Fehler bei der Kodierungsprüfung: {e}")
+        print(f"Error checking encoding: {e}")
     finally:
         cursor.close()
         conn.close()
 
 def main():
-    """Hauptfunktion zur Ausführung aller Optimierungen"""
-    print("=== HRMatrix Datenbank-Optimierung ===")
+    print("=== HRMatrix Database Optimization ===")
     
-    while True:
-        print("\nOptimierungsoptionen:")
-        print("1. Indizes optimieren")
-        print("2. Constraints optimieren")
-        print("3. Tabellenstrukturen prüfen")
-        print("4. Kodierungseinstellungen prüfen")
-        print("5. Alle Optimierungen ausführen")
-        print("q. Beenden")
-        
-        option = input("\nOption wählen: ")
-        
-        if option == '1':
-            add_missing_indices()
-        elif option == '2':
-            optimize_constraints()
-        elif option == '3':
-            check_table_structure()
-        elif option == '4':
-            optimize_encoding()
-        elif option == '5':
-            check_table_structure()
-            add_missing_indices()
-            optimize_constraints()
-            optimize_encoding()
-        elif option.lower() == 'q':
-            break
-        else:
-            print("Ungültige Option!")
+    # Add missing indices
+    add_missing_indices()
+    
+    # Optimize constraints
+    optimize_constraints()
+    
+    # Check table structure
+    check_table_structure()
+    
+    # Check encoding
+    optimize_encoding()
+    
+    print("\n=== Database optimization completed ===")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main() 

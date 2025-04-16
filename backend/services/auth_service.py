@@ -11,6 +11,10 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from models.auth_models import User, Tenant, Role, Permission
 from db.db_service import execute_query
+import logging
+from database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 # Verbindungspool für die Datenbank
 db_pool = None
@@ -1024,4 +1028,238 @@ def has_permission(user_id: int, permission_name: str) -> bool:
         return False
     finally:
         if conn:
-            release_db_connection(conn) 
+            release_db_connection(conn)
+
+class AuthService:
+    """Service für Benutzerauthentifizierung und -verwaltung"""
+    
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hasht ein Passwort mit bcrypt"""
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+    
+    @staticmethod
+    def verify_password(password: str, password_hash: str) -> bool:
+        """Überprüft ein Passwort gegen seinen Hash"""
+        return bcrypt.checkpw(
+            password.encode('utf-8'),
+            password_hash.encode('utf-8')
+        )
+    
+    @staticmethod
+    def generate_token(user_id: int) -> str:
+        """Generiert einen JWT Token"""
+        payload = {
+            'user_id': user_id,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1),
+            'iat': datetime.datetime.utcnow()
+        }
+        return jwt.encode(
+            payload,
+            os.getenv('JWT_SECRET_KEY', 'your_jwt_secret_key_here'),
+            algorithm='HS256'
+        )
+    
+    @staticmethod
+    def create_user(username: str, email: str, password: str) -> Optional[int]:
+        """Erstellt einen neuen Benutzer"""
+        try:
+            conn = DatabaseManager.get_connection()
+            if not conn:
+                return None
+                
+            cursor = conn.cursor()
+            
+            # Prüfe ob Benutzer bereits existiert
+            cursor.execute(
+                "SELECT id FROM users WHERE username = %s OR email = %s",
+                (username, email)
+            )
+            if cursor.fetchone():
+                return None
+                
+            # Hash Passwort und erstelle Benutzer
+            password_hash = AuthService.hash_password(password)
+            
+            cursor.execute("""
+                INSERT INTO users (username, email, password_hash)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (username, email, password_hash))
+            
+            user_id = cursor.fetchone()[0]
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return user_id
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Erstellen des Benutzers: {str(e)}")
+            return None
+    
+    @staticmethod
+    def login(username: str, password: str) -> Tuple[Optional[Dict], Optional[str]]:
+        """Authentifiziert einen Benutzer und erstellt eine Session"""
+        try:
+            conn = DatabaseManager.get_connection()
+            if not conn:
+                return None, "Datenbankverbindung fehlgeschlagen"
+                
+            cursor = conn.cursor()
+            
+            # Benutzer finden
+            cursor.execute("""
+                SELECT id, username, email, password_hash
+                FROM users
+                WHERE username = %s
+            """, (username,))
+            
+            user = cursor.fetchone()
+            if not user or not AuthService.verify_password(password, user[3]):
+                return None, "Ungültige Anmeldedaten"
+                
+            # Session erstellen
+            session_token = str(uuid.uuid4())
+            expires_at = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            
+            cursor.execute("""
+                INSERT INTO sessions (user_id, session_token, expires_at)
+                VALUES (%s, %s, %s)
+            """, (user[0], session_token, expires_at))
+            
+            # Letzten Login aktualisieren
+            cursor.execute("""
+                UPDATE users
+                SET last_login = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (user[0],))
+            
+            conn.commit()
+            
+            # JWT Token generieren
+            token = AuthService.generate_token(user[0])
+            
+            user_data = {
+                'id': user[0],
+                'username': user[1],
+                'email': user[2],
+                'session_token': session_token,
+                'token': token
+            }
+            
+            cursor.close()
+            conn.close()
+            
+            return user_data, None
+            
+        except Exception as e:
+            logger.error(f"Login-Fehler: {str(e)}")
+            return None, f"Interner Serverfehler: {str(e)}"
+    
+    @staticmethod
+    def logout(user_id: int, session_token: str) -> bool:
+        """Beendet eine Benutzersession"""
+        try:
+            conn = DatabaseManager.get_connection()
+            if not conn:
+                return False
+                
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                DELETE FROM sessions
+                WHERE user_id = %s AND session_token = %s
+            """, (user_id, session_token))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Logout-Fehler: {str(e)}")
+            return False
+    
+    @staticmethod
+    def get_user_by_id(user_id: int) -> Optional[Dict]:
+        """Holt Benutzerinformationen nach ID"""
+        try:
+            conn = DatabaseManager.get_connection()
+            if not conn:
+                return None
+                
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, username, email, created_at, last_login
+                FROM users
+                WHERE id = %s
+            """, (user_id,))
+            
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if not user:
+                return None
+                
+            return {
+                'id': user[0],
+                'username': user[1],
+                'email': user[2],
+                'created_at': user[3].isoformat(),
+                'last_login': user[4].isoformat() if user[4] else None
+            }
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen des Benutzers: {str(e)}")
+            return None
+    
+    @staticmethod
+    def update_user(user_id: int, data: Dict) -> bool:
+        """Aktualisiert Benutzerinformationen"""
+        try:
+            conn = DatabaseManager.get_connection()
+            if not conn:
+                return False
+                
+            cursor = conn.cursor()
+            
+            updates = []
+            params = []
+            
+            if 'username' in data:
+                updates.append("username = %s")
+                params.append(data['username'])
+                
+            if 'email' in data:
+                updates.append("email = %s")
+                params.append(data['email'])
+                
+            if 'password' in data:
+                updates.append("password_hash = %s")
+                params.append(AuthService.hash_password(data['password']))
+            
+            if not updates:
+                return False
+                
+            query = f"""
+                UPDATE users
+                SET {', '.join(updates)}
+                WHERE id = %s
+            """
+            params.append(user_id)
+            
+            cursor.execute(query, params)
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Aktualisieren des Benutzers: {str(e)}")
+            return False 

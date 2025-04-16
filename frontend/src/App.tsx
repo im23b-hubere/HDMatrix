@@ -59,7 +59,7 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={de}>
-        <CssBaseline />
+      <CssBaseline />
         <Router>
           <Routes>
             {/* Public routes */}

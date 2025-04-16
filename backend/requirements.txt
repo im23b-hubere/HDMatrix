@@ -1,14 +1,37 @@
-flask>=2.3.3
-flask-cors>=4.0.0
-psycopg2-binary>=2.9.9
-PyPDF2>=3.0.1
-python-docx>=0.8.11
-python-dotenv>=1.0.0
-werkzeug>=2.3.7
-nltk>=3.8.1
-requests>=2.31.0
-typing-extensions>=4.9.0
-ollama==0.1.6
-pyjwt>=2.8.0
-bcrypt>=4.1.2
-python-dateutil>=2.8.2 
+# Basis-Anforderungen
+Flask==3.0.2
+python-dotenv==1.0.1
+Flask-Cors==4.0.0
+Werkzeug==3.0.1
+
+# PDF-Verarbeitung
+PyMuPDF==1.23.26
+PyPDF2==3.0.1
+
+# NLP und Extraktion
+nltk==3.8.1
+spacy==3.7.4
+python-magic==0.4.27
+openai==1.12.0  # Für OpenAI GPT Integration
+
+# Datenbank
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.27
+
+# Logging
+python-json-logger==2.0.7
+structlog==24.1.0
+
+# API-Integration
+requests==2.31.0
+httpx==0.27.0
+
+# Testing
+pytest==8.0.2
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Sicherheit
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+bcrypt==4.1.2 

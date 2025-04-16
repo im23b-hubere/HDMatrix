@@ -5,6 +5,12 @@ from services import auth_service
 from flask_cors import CORS
 import time
 import traceback
+from services.auth_service import AuthService
+import logging
+
+# Logging konfigurieren
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 auth_routes = Blueprint('auth_routes', __name__)
 CORS(auth_routes, 
@@ -22,30 +28,18 @@ def handle_auth_options(path):
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = None
-        
-        # Token aus Header holen
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
-        
+        token = request.headers.get('Authorization')
         if not token:
-            return jsonify({'success': False, 'message': 'Token fehlt!'}), 401
-        
-        # Token überprüfen
-        decoded = auth_service.decode_jwt_token(token)
-        if not decoded['valid']:
-            return jsonify({'success': False, 'message': decoded['error']}), 401
-        
-        # Benutzer-ID und Rolle aus Token holen
-        user_id = decoded['payload']['sub']
-        role = decoded['payload']['role']
-        tenant_id = decoded['payload']['tenant_id']
-        
-        # Daten an die dekorierte Funktion übergeben
-        return f(user_id=user_id, role=role, tenant_id=tenant_id, *args, **kwargs)
-    
+            return jsonify({'error': 'Token fehlt'}), 401
+            
+        try:
+            # Token Format: "Bearer <token>"
+            token = token.split(' ')[1]
+            user_data = AuthService.verify_token(token)
+            return f(*args, user_id=user_data['user_id'], **kwargs)
+        except Exception as e:
+            return jsonify({'error': 'Ungültiger Token'}), 401
+            
     return decorated
 
 def permission_required(permission_name):
@@ -62,39 +56,28 @@ def permission_required(permission_name):
 
 @auth_routes.route('/register', methods=['POST'])
 def register():
+    """Neuen Benutzer registrieren"""
     data = request.json
     
-    # Prüfen, ob alle erforderlichen Felder vorhanden sind
-    required_fields = ['email', 'password', 'first_name', 'last_name', 'tenant_id', 'role_id']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'success': False, 'message': f'Feld {field} fehlt!'}), 400
-    
-    # Optional: Auch Mitarbeiter erstellen
-    create_employee = data.get('create_employee', False)
-    
-    # Benutzer registrieren
-    result = auth_service.register_user(
-        tenant_id=data['tenant_id'],
-        email=data['email'],
-        password=data['password'],
-        first_name=data['first_name'],
-        last_name=data['last_name'],
-        role_id=data['role_id'],
-        create_employee=create_employee
+    if not all(k in data for k in ['username', 'email', 'password']):
+        return jsonify({'error': 'Fehlende Pflichtfelder'}), 400
+        
+    user_id = AuthService.create_user(
+        data['username'],
+        data['email'],
+        data['password']
     )
     
-    if not result['success']:
-        return jsonify(result), 400
-    
-    # Hier würde normalerweise eine E-Mail mit dem Verifizierungslink gesendet
-    verification_url = f"{request.host_url}auth/verify-email/{result['verification_token']}"
-    
+    if not user_id:
+        return jsonify({
+            'error': 'Registrierung fehlgeschlagen. Benutzername oder E-Mail bereits vergeben.'
+        }), 400
+        
     return jsonify({
         'success': True,
-        'user_id': result['user_id'],
-        'verification_url': verification_url
-    }), 201
+        'message': 'Registrierung erfolgreich',
+        'user_id': user_id
+    })
 
 @auth_routes.route('/verify-email/<token>', methods=['GET'])
 def verify_email(token):
@@ -105,63 +88,39 @@ def verify_email(token):
     
     return jsonify(result), 200
 
-@auth_routes.route('/login', methods=['POST', 'OPTIONS'])
-def login_route():
-    """
-    Endpunkt für die Benutzeranmeldung
-    """
-    # Behandle OPTIONS-Anfragen
-    if request.method == 'OPTIONS':
-        return '', 204
-        
-    try:
-        # Request-Daten holen
-        data = request.get_json()
-        print(f"Login-Anfrage erhalten: {data}")
-        
-        if not data:
-            print("Keine Daten empfangen")
-            return jsonify({"success": False, "message": "Keine Daten empfangen. Bitte E-Mail und Passwort angeben."}), 400
-        
-        email = data.get('email', '')
-        password = data.get('password', '')
-        
-        # Basisvalidierung
-        if not email or not password:
-            print(f"Email oder Passwort fehlt. Email: {email}, Passwort: {'*'*len(password) if password else 'leer'}")
-            return jsonify({"success": False, "message": "E-Mail und Passwort sind erforderlich"}), 400
-        
-        # IP-Adresse und User-Agent des Clients erfassen
-        ip_address = request.remote_addr
-        user_agent = request.headers.get('User-Agent', '')
-        
-        print(f"Login-Versuch für {email} von IP {ip_address}")
-        
-        # Login-Funktion aufrufen
-        result = auth_service.login(email, password, ip_address, user_agent)
-        
-        print(f"Login-Ergebnis: {result}")
-        
-        if result.get('success'):
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 401
+@auth_routes.route('/login', methods=['POST'])
+def login():
+    """Benutzer einloggen"""
+    data = request.json
     
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        print(f"Login-Fehler: {str(e)}\n{error_trace}")
-        return jsonify({"success": False, "message": f"Server-Fehler: {str(e)}"}), 500
+    if not all(k in data for k in ['username', 'password']):
+        return jsonify({'error': 'Fehlende Anmeldedaten'}), 400
+        
+    user_data, error = AuthService.login(data['username'], data['password'])
+    
+    if error:
+        return jsonify({'error': error}), 401
+        
+    return jsonify({
+        'success': True,
+        'user': user_data
+    })
 
 @auth_routes.route('/logout', methods=['POST'])
 @token_required
-def logout(user_id, role, tenant_id):
-    token = request.headers['Authorization'].split(' ')[1]
-    result = auth_service.logout(token)
-    
-    if not result['success']:
-        return jsonify(result), 400
-    
-    return jsonify({'success': True}), 200
+def logout(user_id):
+    """Benutzer ausloggen"""
+    session_token = request.json.get('session_token')
+    if not session_token:
+        return jsonify({'error': 'Session-Token fehlt'}), 400
+        
+    if AuthService.logout(user_id, session_token):
+        return jsonify({
+            'success': True,
+            'message': 'Erfolgreich ausgeloggt'
+        })
+    else:
+        return jsonify({'error': 'Logout fehlgeschlagen'}), 500
 
 @auth_routes.route('/forgot-password', methods=['POST'])
 def forgot_password():
@@ -194,34 +153,42 @@ def reset_password():
     
     return jsonify(result), 200
 
-@auth_routes.route('/me', methods=['GET'])
+@auth_routes.route('/profile', methods=['GET'])
 @token_required
-def get_current_user(user_id, role, tenant_id):
-    result = auth_service.get_user(user_id)
+def get_profile(user_id):
+    """Benutzerprofil abrufen"""
+    user_data = AuthService.get_user_by_id(user_id)
     
-    if not result['success']:
-        return jsonify(result), 404
-    
-    return jsonify(result), 200
+    if not user_data:
+        return jsonify({'error': 'Benutzer nicht gefunden'}), 404
+        
+    return jsonify(user_data)
 
-@auth_routes.route('/change-password', methods=['POST'])
+@auth_routes.route('/profile', methods=['PUT'])
 @token_required
-def change_password(user_id, role, tenant_id):
+def update_profile(user_id):
+    """Benutzerprofil aktualisieren"""
     data = request.json
     
-    if not data or 'current_password' not in data or 'new_password' not in data:
-        return jsonify({'success': False, 'message': 'Aktuelles und neues Passwort sind erforderlich!'}), 400
-    
-    result = auth_service.change_password(
-        user_id=user_id,
-        current_password=data['current_password'],
-        new_password=data['new_password']
-    )
-    
-    if not result['success']:
-        return jsonify(result), 400
-    
-    return jsonify(result), 200
+    if not data:
+        return jsonify({'error': 'Keine Aktualisierungsdaten'}), 400
+        
+    if AuthService.update_user(user_id, data):
+        return jsonify({
+            'success': True,
+            'message': 'Profil erfolgreich aktualisiert'
+        })
+    else:
+        return jsonify({'error': 'Aktualisierung fehlgeschlagen'}), 500
+
+@auth_routes.route('/check-auth', methods=['GET'])
+@token_required
+def check_auth(user_id):
+    """Überprüft die Authentifizierung"""
+    return jsonify({
+        'authenticated': True,
+        'user_id': user_id
+    })
 
 # Benutzer-Routen (mit Berechtigungsprüfung)
 

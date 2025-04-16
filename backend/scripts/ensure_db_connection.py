@@ -4,19 +4,19 @@ import psycopg2
 import json
 from pathlib import Path
 
-# Konfiguration für die Datenbankverbindung
+# Database connection configuration
 DB_CONFIG = {
     'dbname': 'hrmatrixdb',
     'user': 'postgres',
     'password': 'Steinadler17',
     'host': 'localhost',
     'port': '5432',
-    'options': '-c client_encoding=latin1'
+    'options': '-c client_encoding=UTF8'
 }
 
 def test_connection():
-    """Testet die Datenbankverbindung"""
-    print("\nTeste Datenbankverbindung...")
+    """Test database connection"""
+    print("\nTesting database connection...")
     
     try:
         conn = psycopg2.connect(
@@ -35,16 +35,16 @@ def test_connection():
         cursor.close()
         conn.close()
         
-        print(f"✓ Verbindung erfolgreich hergestellt!")
-        print(f"  Datenbank-Version: {db_version[0]}")
+        print(f"✓ Connection successful!")
+        print(f"  Database version: {db_version[0]}")
         return True
     
     except Exception as e:
-        print(f"✗ Verbindungsfehler: {str(e)}")
+        print(f"✗ Connection error: {str(e)}")
         return False
 
 def get_python_files():
-    """Findet alle Python-Dateien im Backend-Verzeichnis"""
+    """Find all Python files in the backend directory"""
     backend_dir = Path('.')
     python_files = list(backend_dir.glob('**/*.py'))
     
@@ -55,12 +55,12 @@ def get_python_files():
     return filtered_files
 
 def check_config_in_file(file_path):
-    """Überprüft, ob die Datei Datenbankverbindungsparameter enthält"""
+    """Check if the file contains database connection parameters"""
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
             
-            # Suche nach typischen Datenbankverbindungsparametern
+            # Search for typical database connection parameters
             db_patterns = [
                 r'psycopg2\.connect\s*\(',
                 r'dbname\s*=',
@@ -75,14 +75,14 @@ def check_config_in_file(file_path):
                     
         return False
     except Exception as e:
-        print(f"Fehler beim Lesen von {file_path}: {str(e)}")
+        print(f"Error reading {file_path}: {str(e)}")
         return False
 
 def scan_for_db_configs():
-    """Scannt nach Dateien mit Datenbankverbindungsparametern"""
+    """Scan for files with database connection parameters"""
     python_files = get_python_files()
     
-    print("\nSuche nach Dateien mit Datenbankverbindungsparametern...")
+    print("\nSearching for files with database connection parameters...")
     db_config_files = []
     
     for file_path in python_files:
@@ -93,8 +93,8 @@ def scan_for_db_configs():
     return db_config_files
 
 def check_environment_variables():
-    """Überprüft und aktualisiert Umgebungsvariablen für die Datenbankverbindung"""
-    print("\nPrüfe Umgebungsvariablen...")
+    """Check and update environment variables for database connection"""
+    print("\nChecking environment variables...")
     
     env_file = Path('.env')
     env_vars = {
@@ -108,11 +108,11 @@ def check_environment_variables():
     
     if env_file.exists():
         try:
-            # Lese vorhandene .env-Datei
+            # Read existing .env file
             with open(env_file, 'r') as f:
                 content = f.read()
             
-            # Aktualisiere Werte
+            # Update values
             for key, value in env_vars.items():
                 pattern = rf'^{key}=.*$'
                 replacement = f'{key}={value}'
@@ -122,29 +122,29 @@ def check_environment_variables():
                 else:
                     content += f'\n{key}={value}'
             
-            # Schreibe aktualisierte .env-Datei
+            # Write updated .env file
             with open(env_file, 'w') as f:
                 f.write(content)
                 
-            print(f"✓ Umgebungsvariablen in .env-Datei aktualisiert")
+            print(f"✓ Environment variables updated in .env file")
             
         except Exception as e:
-            print(f"✗ Fehler beim Aktualisieren der .env-Datei: {str(e)}")
+            print(f"✗ Error updating .env file: {str(e)}")
     else:
-        # Erstelle neue .env-Datei
+        # Create new .env file
         try:
             with open(env_file, 'w') as f:
                 for key, value in env_vars.items():
                     f.write(f'{key}={value}\n')
             
-            print(f"✓ Neue .env-Datei mit Datenbankverbindungsparametern erstellt")
+            print(f"✓ New .env file created with database connection parameters")
             
         except Exception as e:
-            print(f"✗ Fehler beim Erstellen der .env-Datei: {str(e)}")
+            print(f"✗ Error creating .env file: {str(e)}")
 
 def update_config_file():
-    """Aktualisiert oder erstellt die Konfigurationsdatei"""
-    print("\nAktualisiere Konfigurationsdatei...")
+    """Update or create the configuration file"""
+    print("\nUpdating configuration file...")
     
     config_dir = Path('config')
     config_file = config_dir / 'database.json'
@@ -158,7 +158,7 @@ def update_config_file():
                 'development': DB_CONFIG,
                 'production': {
                     **DB_CONFIG,
-                    'host': '${DB_HOST}',  # Platzhalter für Umgebungsvariablen
+                    'host': '${DB_HOST}',  # Placeholder for environment variables
                     'password': '${DB_PASSWORD}'
                 }
             }
@@ -167,43 +167,40 @@ def update_config_file():
         with open(config_file, 'w') as f:
             json.dump(config_data, f, indent=2)
         
-        print(f"✓ Konfigurationsdatei aktualisiert: {config_file}")
+        print(f"✓ Configuration file updated: {config_file}")
         
     except Exception as e:
-        print(f"✗ Fehler beim Aktualisieren der Konfigurationsdatei: {str(e)}")
+        print(f"✗ Error updating configuration file: {str(e)}")
 
 def main():
-    print("=== HRMatrix Datenbankverbindung optimieren ===")
+    print("=== HRMatrix Database Connection Optimizer ===")
     
-    # Prüfe Verbindung
+    # Check connection
     if not test_connection():
-        print("\nWarnung: Datenbankverbindung konnte nicht hergestellt werden.")
-        proceed = input("Möchten Sie trotzdem fortfahren? (j/n): ")
-        if proceed.lower() != 'j':
+        print("\nWarning: Could not establish database connection.")
+        proceed = input("Do you want to continue? (y/n): ")
+        if proceed.lower() != 'y':
             return
     
-    # Suche nach Dateien mit Datenbankverbindungsparametern
+    # Search for files with database connection parameters
     db_config_files = scan_for_db_configs()
     
-    # Aktualisiere Umgebungsvariablen
+    # Update environment variables
     check_environment_variables()
     
-    # Aktualisiere Konfigurationsdatei
+    # Update configuration file
     update_config_file()
     
-    print("\n=== Datenbankverbindung eingerichtet ===")
+    print("\n=== Database connection configured ===")
     print(f"""
-Die Datenbankverbindung wurde aktualisiert. Folgende Einstellungen werden verwendet:
-- Datenbankname: {DB_CONFIG['dbname']}
-- Benutzer: {DB_CONFIG['user']}
-- Passwort: {'*' * len(DB_CONFIG['password'])}
+Database connection has been updated. The following settings are being used:
+- Database name: {DB_CONFIG['dbname']}
+- User: {DB_CONFIG['user']}
+- Password: {'*' * len(DB_CONFIG['password'])}
 - Host: {DB_CONFIG['host']}
 - Port: {DB_CONFIG['port']}
-- Client-Encoding: latin1 (über options-Parameter)
+- Options: {DB_CONFIG['options']}
+""")
 
-Stellen Sie sicher, dass diese Einstellungen mit Ihrer Datenbankinstallation übereinstimmen.
-Falls nötig, passen Sie die .env-Datei oder config/database.json an.
-    """)
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main() 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box, Button, TextField, Typography, Paper, Divider, CircularProgress,
-  Grid, Stack, Chip, List, ListItem, ListItemText, Dialog, DialogTitle,
+  Grid as MuiGrid, Stack, Chip, List, ListItem, ListItemText, Dialog, DialogTitle,
   DialogContent, DialogActions, IconButton, FormControlLabel, Switch,
   Card, CardContent, Alert
 } from '@mui/material';
@@ -66,7 +66,6 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Schnittstelle für extrahierte Daten
 interface ExtractedData {
-  // Alte Format-Unterstützung
   personal_data?: {
     vorname?: string;
     nachname?: string;
@@ -74,7 +73,6 @@ interface ExtractedData {
     telefon?: string;
     adresse?: string;
   };
-  // Verwende nur einen education-Typ mit einer Vereinigung der möglichen Formate
   education?: Array<{
     institution?: string;
     abschluss?: string;
@@ -91,13 +89,11 @@ interface ExtractedData {
     zeitraum?: string;
     beschreibung?: string;
   }>;
-  // Definiere skills als Union-Typ
-  skills?: string[] | {
+  skills?: {
     technische_skills?: string[];
     sprachen?: string[];
     soft_skills?: string[];
-  };
-  // Neues Format-Unterstützung für direkten HuggingFace/Basis-Extraktor
+  } | string[];
   name?: string;
   email?: string;
   phone?: string;
@@ -114,14 +110,8 @@ interface ExtractedData {
     language?: string;
     proficiency?: string;
   }>;
-  projects?: Array<{
-    name?: string;
-    description?: string;
-    technologies?: string[];
-  }>;
-  // Metadaten
-  extraction_method?: string;
   text_sample?: string;
+  extraction_method?: string;
 }
 
 // Helper-Funktionen für die Datenformatierung und Konvertierung
@@ -220,16 +210,16 @@ const CVUploadForm: React.FC<CVUploadFormProps> = ({ onUploadSuccess, tenantId }
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [textPreview, setTextPreview] = useState<string | null>(null);
   const [showTextPreview, setShowTextPreview] = useState<boolean>(false);
-  const [useMockData, setUseMockData] = useState<boolean>(cvUploadService.useMockData());
+  const [mockMode, setMockMode] = useState<boolean>(false);
 
   // Referenz für das Vorschau-Formular, um es programmatisch zu scrollen
   const previewRef = useRef<HTMLDivElement>(null);
 
   // Toggle für Mock-Daten
   const handleToggleMockData = () => {
-    const newValue = !useMockData;
+    const newValue = !mockMode;
+    setMockMode(newValue);
     cvUploadService.setMockData(newValue);
-    setUseMockData(newValue);
     
     if (newValue) {
       setError('Mock-Modus aktiviert. Es werden Beispieldaten verwendet.');
@@ -395,7 +385,7 @@ const CVUploadForm: React.FC<CVUploadFormProps> = ({ onUploadSuccess, tenantId }
         <FormControlLabel
           control={
             <Switch
-              checked={useMockData}
+              checked={mockMode}
               onChange={handleToggleMockData}
               color="primary"
             />
@@ -405,53 +395,20 @@ const CVUploadForm: React.FC<CVUploadFormProps> = ({ onUploadSuccess, tenantId }
       </Box>
       
       {/* Drag & Drop Zone */}
-      <DropzoneContainer
-        {...getRootProps()}
-        sx={{
-          borderColor: isDragActive ? 'primary.main' : file ? 'success.main' : 'divider',
-          backgroundColor: isDragActive ? 'action.hover' : 'background.paper'
-        }}
-      >
+      <DropzoneContainer {...getRootProps()}>
         <input {...getInputProps()} />
-        <Box sx={{ p: 3 }}>
-          {file ? (
-            <>
-              <CheckCircleIcon color="success" sx={{ fontSize: 48, mb: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                {file.name} ({(file.size / 1024 / 1024).toFixed(2)}MB)
-              </Typography>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<DeleteIcon />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRemoveFile();
-                }}
-                sx={{ mt: 1 }}
-              >
-                Entfernen
-              </Button>
-            </>
-          ) : (
-            <>
-              <CloudUploadIcon sx={{ fontSize: 48, mb: 2, color: 'primary.main' }} />
-              <Typography variant="h6" gutterBottom>
-                {isDragActive
-                  ? 'Datei hier ablegen...'
-                  : 'Klicken oder ziehen Sie eine Datei hierher, um sie hochzuladen'}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Unterstützte Formate: PDF, DOC, DOCX (max. 10MB)
-              </Typography>
-            </>
-          )}
-        </Box>
+        <CloudUploadIcon sx={{ fontSize: 40, mb: 2 }} />
+        <Typography variant="h6" gutterBottom>
+          PDF hier ablegen oder klicken zum Auswählen
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          Unterstützte Formate: PDF, DOC, DOCX
+        </Typography>
       </DropzoneContainer>
 
       {/* Fehlermeldungen oder Erfolgsmeldungen */}
-      {error && <Alert severity="error">{error}</Alert>}
-      {success && <Alert severity="success">{success}</Alert>}
+      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
 
       {/* Ladeindikator für Vorschau */}
       {previewLoading && (
@@ -466,265 +423,52 @@ const CVUploadForm: React.FC<CVUploadFormProps> = ({ onUploadSuccess, tenantId }
       {/* Vorschau der extrahierten Daten */}
       {extractedData && !previewLoading && (
         <PreviewContainer ref={previewRef}>
-          <Typography variant="h5" gutterBottom>
-            Extrahierte Daten
-          </Typography>
-          <Divider sx={{ mb: 3 }} />
-          
-          {/* Extraktionsmethode und -erfolg anzeigen */}
-          {extractedData.extraction_method && (
-            <Chip 
-              icon={<InfoIcon />} 
-              label={`Extraktionsmethode: ${extractedData.extraction_method}`} 
-              color="info" 
-              variant="outlined" 
-              sx={{ mb: 2 }}
-            />
-          )}
-
-          <Grid container spacing={3}>
-            {/* Persönliche Daten */}
-            <Grid item xs={12} md={6}>
-              <PreviewSection>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Persönliche Daten
-                  </Typography>
-                  
-                  <TextField
-                    label="Vorname"
-                    value={extractedData.personal_data?.vorname || 
-                          (extractedData.name ? extractedData.name.split(' ')[0] : '')}
-                    fullWidth
-                    margin="normal"
-                    InputProps={{ readOnly: true }}
-                  />
-                  
-                  <TextField
-                    label="Nachname"
-                    value={extractedData.personal_data?.nachname || 
-                          (extractedData.name && extractedData.name.split(' ').length > 1 
-                            ? extractedData.name.split(' ').slice(1).join(' ') 
-                            : '')}
-                    fullWidth
-                    margin="normal"
-                    InputProps={{ readOnly: true }}
-                  />
-                  
-                  <TextField
-                    label="E-Mail"
-                    value={extractedData.personal_data?.email || extractedData.email || ''}
-                    fullWidth
-                    margin="normal"
-                    InputProps={{ readOnly: true }}
-                  />
-                  
-                  <TextField
-                    label="Telefon"
-                    value={extractedData.personal_data?.telefon || extractedData.phone || ''}
-                    fullWidth
-                    margin="normal"
-                    InputProps={{ readOnly: true }}
-                  />
-                  
-                  <TextField
-                    label="Adresse"
-                    value={extractedData.personal_data?.adresse || extractedData.address || ''}
-                    fullWidth
-                    margin="normal"
-                    InputProps={{ readOnly: true }}
-                  />
-                </CardContent>
-              </PreviewSection>
-              
-              {/* Zusammenfassung, falls vorhanden */}
-              {extractedData.summary && (
-                <PreviewSection sx={{ mt: 3 }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Zusammenfassung
-                    </Typography>
-                    <TextField
-                      value={extractedData.summary}
-                      fullWidth
-                      multiline
-                      rows={4}
-                      margin="normal"
-                      InputProps={{ readOnly: true }}
-                    />
-                  </CardContent>
-                </PreviewSection>
+          <Box sx={{ mb: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <Typography variant="h6">
+                Extrahierte Daten
+              </Typography>
+              {extractedData?.extraction_method && (
+                <Chip
+                  label={`Methode: ${extractedData.extraction_method}`}
+                  color="info"
+                  size="small"
+                />
               )}
-            </Grid>
+            </Box>
             
-            <Grid item xs={12} md={6}>
-              {/* Skills */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <PreviewSection>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Fähigkeiten
-                  </Typography>
-                  
-                  {/* Technische Skills */}
-                  <Typography variant="subtitle1" sx={{ mt: 2 }}>
-                    Technische Fähigkeiten
-                  </Typography>
-                  
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {Array.isArray(extractedData.skills) 
-                      ? extractedData.skills.map((skill, index) => (
-                          <Chip key={index} label={skill} />
-                        ))
-                      : (extractedData.skills?.technische_skills || []).map((skill, index) => (
-                          <Chip key={index} label={skill} />
-                        ))}
-                  </Box>
-                  
-                  {/* Sprachen */}
-                  <Typography variant="subtitle1" sx={{ mt: 3 }}>
-                    Sprachen
-                  </Typography>
-                  
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {extractedData.languages 
-                      ? extractedData.languages.map((lang, index) => (
-                          <Chip 
-                            key={index} 
-                            label={lang.proficiency ? `${lang.language} (${lang.proficiency})` : lang.language} 
-                          />
-                        ))
-                      : (extractedData.skills?.sprachen || []).map((lang, index) => (
-                          <Chip key={index} label={lang} />
-                        ))}
-                  </Box>
-                  
-                  {/* Soft Skills */}
-                  {(extractedData.skills?.soft_skills || []).length > 0 && (
+                  {/* Persönliche Daten */}
+                  {extractedData?.personal_data && (
                     <>
-                      <Typography variant="subtitle1" sx={{ mt: 3 }}>
-                        Soft Skills
+                      <Typography variant="subtitle1" gutterBottom>
+                        Persönliche Daten
                       </Typography>
-                      
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                        {(extractedData.skills?.soft_skills || []).map((skill, index) => (
-                          <Chip key={index} label={skill} />
+                      <List>
+                        {Object.entries(extractedData.personal_data).map(([key, value]) => (
+                          value && (
+                            <ListItem key={key} sx={{ py: 0.5 }}>
+                              <ListItemText
+                                primary={value}
+                                secondary={key.charAt(0).toUpperCase() + key.slice(1)}
+                              />
+                            </ListItem>
+                          )
                         ))}
-                      </Box>
+                      </List>
                     </>
                   )}
                 </CardContent>
               </PreviewSection>
-            </Grid>
-            
-            {/* Arbeitserfahrung */}
-            <Grid item xs={12}>
-              <PreviewSection>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Berufserfahrung
-                  </Typography>
-                  
-                  {(extractedData.work_experience && extractedData.work_experience.length > 0) || 
-                   (extractedData.experience && extractedData.experience.length > 0) ? (
-                    <Timeline position="alternate" sx={{ mt: 2 }}>
-                      {(extractedData.work_experience 
-                        ? getExperienceDisplay(extractedData.work_experience) 
-                        : extractedData.experience || []).map((exp, index) => (
-                        <TimelineItem key={index}>
-                          <TimelineOppositeContent color="text.secondary">
-                            {exp.zeitraum || formatDateRange(exp.start_date, exp.end_date)}
-                          </TimelineOppositeContent>
-                          
-                          <TimelineSeparator>
-                            <TimelineDot color="primary" />
-                            {index < (extractedData.work_experience?.length || extractedData.experience?.length || 0) - 1 && <TimelineConnector />}
-                          </TimelineSeparator>
-                          
-                          <TimelineContent>
-                            <Paper elevation={3} sx={{ p: 2 }}>
-                              <Typography variant="h6" component="div">
-                                {exp.position || exp.firma}
-                              </Typography>
-                              
-                              <Typography color="textSecondary">
-                                {exp.company || exp.firma}
-                              </Typography>
-                              
-                              {(exp.description || exp.beschreibung) && (
-                                <Typography variant="body2" sx={{ mt: 1 }}>
-                                  {exp.description || exp.beschreibung}
-                                </Typography>
-                              )}
-                            </Paper>
-                          </TimelineContent>
-                        </TimelineItem>
-                      ))}
-                    </Timeline>
-                  ) : (
-                    <Typography variant="body1" color="textSecondary" sx={{ mt: 2 }}>
-                      Keine Berufserfahrung gefunden
-                    </Typography>
-                  )}
-                </CardContent>
-              </PreviewSection>
-            </Grid>
-            
-            {/* Ausbildung */}
-            <Grid item xs={12}>
-              <PreviewSection>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Ausbildung
-                  </Typography>
-                  
-                  {(extractedData.education && extractedData.education.length > 0) ? (
-                    <Timeline position="alternate" sx={{ mt: 2 }}>
-                      {(Array.isArray(extractedData.education) 
-                        ? getEducationDisplay(extractedData.education) 
-                        : []).map((edu, index) => (
-                        <TimelineItem key={index}>
-                          <TimelineOppositeContent color="text.secondary">
-                            {edu.zeitraum || formatDateRange(edu.start_date, edu.end_date)}
-                          </TimelineOppositeContent>
-                          
-                          <TimelineSeparator>
-                            <TimelineDot color="secondary" />
-                            {index < (extractedData.education?.length || 0) - 1 && <TimelineConnector />}
-                          </TimelineSeparator>
-                          
-                          <TimelineContent>
-                            <Paper elevation={3} sx={{ p: 2 }}>
-                              <Typography variant="h6" component="div">
-                                {edu.abschluss || edu.degree || 'Ausbildung'}
-                              </Typography>
-                              
-                              <Typography color="textSecondary">
-                                {edu.institution}
-                              </Typography>
-                              
-                              {edu.fachrichtung && (
-                                <Typography variant="body2" sx={{ mt: 1 }}>
-                                  {edu.fachrichtung}
-                                </Typography>
-                              )}
-                            </Paper>
-                          </TimelineContent>
-                        </TimelineItem>
-                      ))}
-                    </Timeline>
-                  ) : (
-                    <Typography variant="body1" color="textSecondary" sx={{ mt: 2 }}>
-                      Keine Ausbildungsdaten gefunden
-                    </Typography>
-                  )}
-                </CardContent>
-              </PreviewSection>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
 
-          {/* Textprobe */}
-          {extractedData.text_sample && (
-            <Box sx={{ mt: 3 }}>
+          {/* Aktionen */}
+          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+            {/* Text-Vorschau Button */}
+            {extractedData?.text_sample && (
               <Button
                 variant="outlined"
                 color="info"
@@ -733,25 +477,9 @@ const CVUploadForm: React.FC<CVUploadFormProps> = ({ onUploadSuccess, tenantId }
               >
                 Text-Vorschau anzeigen
               </Button>
-              
-              <Dialog open={showTextPreview} onClose={handleCloseTextPreview} maxWidth="md" fullWidth>
-                <DialogTitle>Text-Vorschau</DialogTitle>
-                <DialogContent>
-                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                    {extractedData.text_sample}
-                  </Typography>
-                </DialogContent>
-                <DialogActions>
-                  <Button onClick={handleCloseTextPreview} color="primary">
-                    Schließen
-                  </Button>
-                </DialogActions>
-              </Dialog>
-            </Box>
-          )}
+            )}
 
-          {/* Aktionen */}
-          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            {/* Speichern Button */}
             <Button
               variant="contained"
               color="primary"
@@ -764,6 +492,30 @@ const CVUploadForm: React.FC<CVUploadFormProps> = ({ onUploadSuccess, tenantId }
           </Box>
         </PreviewContainer>
       )}
+
+      {/* Dialog für Text-Vorschau */}
+      <Dialog 
+        open={showTextPreview} 
+        onClose={handleCloseTextPreview} 
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>
+          Text-Vorschau
+          <IconButton
+            aria-label="close"
+            onClick={handleCloseTextPreview}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+            {extractedData?.text_sample}
+          </Typography>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

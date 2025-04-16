@@ -2,7 +2,7 @@ import psycopg2
 import sys
 
 def get_connection():
-    """Stellt eine Verbindung zur Datenbank her"""
+    """Establish a connection to the database"""
     try:
         conn = psycopg2.connect(
             dbname="hrmatrixdb", 
@@ -10,15 +10,15 @@ def get_connection():
             password="Steinadler17", 
             host="localhost", 
             port="5432",
-            options="-c client_encoding=latin1"
+            options="-c client_encoding=UTF8"
         )
         return conn
     except Exception as e:
-        print(f"Fehler bei der Verbindung: {e}")
+        print(f"Connection error: {e}")
         sys.exit(1)
 
 def list_tables():
-    """Listet alle Tabellen in der Datenbank auf"""
+    """List all tables in the database"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -32,25 +32,25 @@ def list_tables():
         
         tables = cursor.fetchall()
         
-        print("\nVorhandene Tabellen:")
+        print("\nExisting tables:")
         for table in tables:
             print(f"- {table[0]}")
         
-        print(f"\nGesamtzahl der Tabellen: {len(tables)}")
+        print(f"\nTotal number of tables: {len(tables)}")
         
     except Exception as e:
-        print(f"Fehler bei der Abfrage: {e}")
+        print(f"Query error: {e}")
     finally:
         cursor.close()
         conn.close()
 
 def describe_table(table_name):
-    """Zeigt die Struktur einer Tabelle an"""
+    """Show the structure of a table"""
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        # Spalten abfragen
+        # Query columns
         cursor.execute("""
             SELECT column_name, data_type, is_nullable, column_default
             FROM information_schema.columns
@@ -61,17 +61,17 @@ def describe_table(table_name):
         columns = cursor.fetchall()
         
         if not columns:
-            print(f"Tabelle '{table_name}' existiert nicht.")
+            print(f"Table '{table_name}' does not exist.")
             return
         
-        print(f"\nStruktur der Tabelle '{table_name}':")
+        print(f"\nStructure of table '{table_name}':")
         print("---------------------------------------")
         for col in columns:
             nullable = "NULL" if col[2] == "YES" else "NOT NULL"
             default = f" DEFAULT {col[3]}" if col[3] else ""
             print(f"{col[0]}: {col[1]} {nullable}{default}")
         
-        # Indices abfragen
+        # Query indices
         cursor.execute("""
             SELECT indexname, indexdef
             FROM pg_indexes
@@ -81,11 +81,11 @@ def describe_table(table_name):
         indices = cursor.fetchall()
         
         if indices:
-            print("\nIndizes:")
+            print("\nIndices:")
             for idx in indices:
                 print(f"- {idx[0]}: {idx[1]}")
         
-        # Constraints abfragen
+        # Query constraints
         cursor.execute("""
             SELECT con.conname, con.contype, pg_get_constraintdef(con.oid)
             FROM pg_constraint con
@@ -106,23 +106,23 @@ def describe_table(table_name):
                 
                 print(f"- {con[0]} ({con_type}): {con[2]}")
         
-        # Anzahl der Zeilen
+        # Number of rows
         cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
         count = cursor.fetchone()[0]
-        print(f"\nAnzahl Datensätze: {count}")
+        print(f"\nNumber of records: {count}")
         
     except Exception as e:
-        print(f"Fehler bei der Abfrage: {e}")
+        print(f"Query error: {e}")
     finally:
         cursor.close()
         conn.close()
 
 if __name__ == "__main__":
-    # Tabellen auflisten
+    # List tables
     list_tables()
     
-    # Nach Tabellenname fragen
-    print("\nGeben Sie einen Tabellennamen ein, um Details anzuzeigen (oder 'q' zum Beenden):")
+    # Ask for table name
+    print("\nEnter a table name to show details (or 'q' to quit):")
     while True:
         table_name = input("> ")
         if table_name.lower() == 'q':
